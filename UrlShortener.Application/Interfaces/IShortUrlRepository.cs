@@ -8,7 +8,8 @@ public interface IShortUrlRepository
     Task AddShortUrlAsync(ShortUrl entity, CancellationToken ct);
     Task<ShortUrl?> GetByShortCodeNotDeletedAsync(string shortCode, CancellationToken ct);
     Task<ShortUrl?> GetByShortCodeAnyAsync(string shortCode, CancellationToken ct);
-    Task<List<ShortUrlAccessLog>> GetAccessLogsAsync(Guid shortUrlId, DateTime fromUtc, DateTime toUtc, CancellationToken ct);
+    Task<List<(DateTime DateUtc, int Clicks)>> GetDailyClicksAsync(Guid shortUrlId, DateTime fromUtc, DateTime toUtc, CancellationToken ct);
+    Task<bool> IncrementClickCountAsync(Guid shortUrlId, DateTime accessedAtUtc, CancellationToken ct);
     Task AddAccessLogAsync(ShortUrlAccessLog log, CancellationToken ct);
     Task SaveChangesAsync(CancellationToken ct);
 }

@@ -79,6 +79,7 @@ public class ShortUrlService : IShortUrlService
 
         var cacheModel = new ShortUrlCacheModel
         {
+            ShortUrlId = entity.Id,
             OriginalUrl = entity.OriginalUrl,
             ExpiresAtUtc = entity.ExpiresAtUtc,
             IsActive = entity.IsActive,
@@ -149,22 +150,19 @@ public class ShortUrlService : IShortUrlService
         var actualToUtc = toUtc ?? nowUtc;
         var actualFromUtc = fromUtc ?? nowUtc.AddDays(-30);
 
-        var logs = await _repository.GetAccessLogsAsync(entity.Id, actualFromUtc, actualToUtc, ct);
-
-        var dailyClicks = logs
-            .GroupBy(x => x.AccessedAtUtc.Date)
-            .OrderBy(x => x.Key)
+        var dailyClickCounts = await _repository.GetDailyClicksAsync(entity.Id, actualFromUtc, actualToUtc, ct);
+        var dailyClicks = dailyClickCounts
             .Select(x => new DailyClicksItem
             {
-                DateUtc = x.Key.ToString("yyyy-MM-dd"),
-                Clicks = x.Count()
+                DateUtc = x.DateUtc.ToString("yyyy-MM-dd"),
+                Clicks = x.Clicks
             })
             .ToList();
 
         return new StatsResponse
         {
             ShortCode = entity.ShortCode,
-            TotalClicks = logs.LongCount(),
+            TotalClicks = dailyClickCounts.Sum(x => (long)x.Clicks),
             FromUtc = actualFromUtc,
             ToUtc = actualToUtc,
             DailyClicks = dailyClicks
@@ -188,19 +186,13 @@ public class ShortUrlService : IShortUrlService
                 return (410, null);
             }
 
-            var fromDb = await _repository.GetByShortCodeAnyAsync(shortCode, ct);
-            if (fromDb == null || fromDb.IsDeleted || !fromDb.IsActive)
+            var registeredFromCache = await RegisterAccessAsync(cacheModel.ShortUrlId, nowUtc, ip, userAgent, referer, ct);
+            if (registeredFromCache)
             {
-                return (404, null);
+                return (302, cacheModel.OriginalUrl);
             }
 
-            if (fromDb.ExpiresAtUtc.HasValue && fromDb.ExpiresAtUtc.Value <= nowUtc)
-            {
-                return (410, null);
-            }
-
-            await RegisterAccessAsync(fromDb, nowUtc, ip, userAgent, referer, ct);
-            return (302, cacheModel.OriginalUrl);
+            await _shortUrlCache.RemoveAsync(shortCode, ct);
         }
 
         var entity = await _repository.GetByShortCodeAnyAsync(shortCode, ct);
@@ -221,6 +213,7 @@ public class ShortUrlService : IShortUrlService
 
         var model = new ShortUrlCacheModel
         {
+            ShortUrlId = entity.Id,
             OriginalUrl = entity.OriginalUrl,
             ExpiresAtUtc = entity.ExpiresAtUtc,
             IsActive = entity.IsActive,
@@ -229,20 +222,27 @@ public class ShortUrlService : IShortUrlService
 
         await _shortUrlCache.SetAsync(entity.ShortCode, model, CalculateTtl(entity.ExpiresAtUtc, nowUtc), ct);
 
-        await RegisterAccessAsync(entity, nowUtc, ip, userAgent, referer, ct);
+        var registered = await RegisterAccessAsync(entity.Id, nowUtc, ip, userAgent, referer, ct);
+        if (!registered)
+        {
+            return (404, null);
+        }
 
         return (302, entity.OriginalUrl);
     }
 
-    private async Task RegisterAccessAsync(ShortUrl entity, DateTime nowUtc, string ip, string? userAgent, string? referer, CancellationToken ct)
+    private async Task<bool> RegisterAccessAsync(Guid shortUrlId, DateTime nowUtc, string ip, string? userAgent, string? referer, CancellationToken ct)
     {
-        entity.ClickCount += 1;
-        entity.LastAccessedAtUtc = nowUtc;
+        var updated = await _repository.IncrementClickCountAsync(shortUrlId, nowUtc, ct);
+        if (!updated)
+        {
+            return false;
+        }
 
         var log = new ShortUrlAccessLog
         {
             Id = Guid.NewGuid(),
-            ShortUrlId = entity.Id,
+            ShortUrlId = shortUrlId,
             AccessedAtUtc = nowUtc,
             IpAddress = ip,
             UserAgent = userAgent,
@@ -251,6 +251,8 @@ public class ShortUrlService : IShortUrlService
 
         await _repository.AddAccessLogAsync(log, ct);
         await _repository.SaveChangesAsync(ct);
+
+        return true;
     }
 
     private static TimeSpan CalculateTtl(DateTime? expiresAtUtc, DateTime nowUtc)

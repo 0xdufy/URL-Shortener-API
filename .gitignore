@@ -1,0 +1,15 @@
+.tasks/
+.vs/
+
+# Build artifacts
+**/bin/
+**/obj/
+**/buildobj/
+
+# Logs
+*.log
+logs/
+
+# Temp files
+*.tmp
+*.cache

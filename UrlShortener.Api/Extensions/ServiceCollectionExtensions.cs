@@ -20,8 +20,14 @@ public static class ServiceCollectionExtensions
 {
     public static IServiceCollection AddApiServices(this IServiceCollection services, IConfiguration configuration)
     {
-        services.AddDbContext<AppDbContext>(options =>
-            options.UseSqlServer(configuration.GetConnectionString("SqlServer")));
+        var useInMemoryStore = configuration.GetValue<bool>("Storage:UseInMemory");
+        if (!useInMemoryStore)
+        {
+            services.AddDbContext<AppDbContext>(options =>
+                options.UseSqlServer(
+                    configuration.GetConnectionString("SqlServer"),
+                    sqlOptions => sqlOptions.EnableRetryOnFailure()));
+        }
 
         services.AddMemoryCache();
 
@@ -37,7 +43,14 @@ public static class ServiceCollectionExtensions
         services.AddAutoMapper(typeof(MappingProfile).Assembly);
 
         services.AddScoped<IShortUrlService, ShortUrlService>();
-        services.AddScoped<IShortUrlRepository, ShortUrlRepository>();
+        if (useInMemoryStore)
+        {
+            services.AddSingleton<IShortUrlRepository, InMemoryShortUrlRepository>();
+        }
+        else
+        {
+            services.AddScoped<IShortUrlRepository, ShortUrlRepository>();
+        }
         services.AddSingleton<IShortCodeGenerator, ShortCodeGenerator>();
         services.AddSingleton<IShortUrlCache, ShortUrlCache>();
         services.AddSingleton<IRateLimiter, InMemoryRateLimiter>();

@@ -1,8 +1,3 @@
-E:\Projects\URL Shortener API\UrlShortener.Infrastructure\obj\Debug\net8.0\UrlShortener.Infrastructure.csproj.AssemblyReference.cache
-E:\Projects\URL Shortener API\UrlShortener.Infrastructure\obj\Debug\net8.0\UrlShortener.Infrastructure.GeneratedMSBuildEditorConfig.editorconfig
-E:\Projects\URL Shortener API\UrlShortener.Infrastructure\obj\Debug\net8.0\UrlShortener.Infrastructure.AssemblyInfoInputs.cache
-E:\Projects\URL Shortener API\UrlShortener.Infrastructure\obj\Debug\net8.0\UrlShortener.Infrastructure.AssemblyInfo.cs
-E:\Projects\URL Shortener API\UrlShortener.Infrastructure\obj\Debug\net8.0\UrlShortener.Infrastructure.csproj.CoreCompileInputs.cache
 E:\Projects\URL Shortener API\UrlShortener.Infrastructure\bin\Debug\net8.0\UrlShortener.Infrastructure.deps.json
 E:\Projects\URL Shortener API\UrlShortener.Infrastructure\bin\Debug\net8.0\UrlShortener.Infrastructure.runtimeconfig.json
 E:\Projects\URL Shortener API\UrlShortener.Infrastructure\bin\Debug\net8.0\UrlShortener.Infrastructure.dll
@@ -11,6 +6,12 @@ E:\Projects\URL Shortener API\UrlShortener.Infrastructure\bin\Debug\net8.0\UrlSh
 E:\Projects\URL Shortener API\UrlShortener.Infrastructure\bin\Debug\net8.0\UrlShortener.Domain.dll
 E:\Projects\URL Shortener API\UrlShortener.Infrastructure\bin\Debug\net8.0\UrlShortener.Application.pdb
 E:\Projects\URL Shortener API\UrlShortener.Infrastructure\bin\Debug\net8.0\UrlShortener.Domain.pdb
+E:\Projects\URL Shortener API\UrlShortener.Infrastructure\obj\Debug\net8.0\UrlShortener.Infrastructure.csproj.AssemblyReference.cache
+E:\Projects\URL Shortener API\UrlShortener.Infrastructure\obj\Debug\net8.0\UrlShortener.Infrastructure.GeneratedMSBuildEditorConfig.editorconfig
+E:\Projects\URL Shortener API\UrlShortener.Infrastructure\obj\Debug\net8.0\UrlShortener.Infrastructure.AssemblyInfoInputs.cache
+E:\Projects\URL Shortener API\UrlShortener.Infrastructure\obj\Debug\net8.0\UrlShortener.Infrastructure.AssemblyInfo.cs
+E:\Projects\URL Shortener API\UrlShortener.Infrastructure\obj\Debug\net8.0\UrlShortener.Infrastructure.csproj.CoreCompileInputs.cache
+E:\Projects\URL Shortener API\UrlShortener.Infrastructure\obj\Debug\net8.0\UrlShortener.Infrastructure.sourcelink.json
 E:\Projects\URL Shortener API\UrlShortener.Infrastructure\obj\Debug\net8.0\UrlShort.41F6DB00.Up2Date
 E:\Projects\URL Shortener API\UrlShortener.Infrastructure\obj\Debug\net8.0\UrlShortener.Infrastructure.dll
 E:\Projects\URL Shortener API\UrlShortener.Infrastructure\obj\Debug\net8.0\refint\UrlShortener.Infrastructure.dll

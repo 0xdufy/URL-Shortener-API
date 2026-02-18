@@ -37,13 +37,36 @@ public class ShortUrlRepository : IShortUrlRepository
             .FirstOrDefaultAsync(x => EF.Functions.Collate(x.ShortCode, CaseSensitiveCollation) == shortCode, ct);
     }
 
-    public Task<List<ShortUrlAccessLog>> GetAccessLogsAsync(Guid shortUrlId, DateTime fromUtc, DateTime toUtc, CancellationToken ct)
+    public async Task<List<(DateTime DateUtc, int Clicks)>> GetDailyClicksAsync(Guid shortUrlId, DateTime fromUtc, DateTime toUtc, CancellationToken ct)
     {
-        return _dbContext.ShortUrlAccessLogs
+        var grouped = await _dbContext.ShortUrlAccessLogs
             .AsNoTracking()
             .Where(x => x.ShortUrlId == shortUrlId && x.AccessedAtUtc >= fromUtc && x.AccessedAtUtc <= toUtc)
-            .OrderBy(x => x.AccessedAtUtc)
+            .GroupBy(x => x.AccessedAtUtc.Date)
+            .Select(x => new
+            {
+                DateUtc = x.Key,
+                Clicks = x.Count()
+            })
+            .OrderBy(x => x.DateUtc)
             .ToListAsync(ct);
+
+        return grouped.Select(x => (x.DateUtc, x.Clicks)).ToList();
+    }
+
+    public async Task<bool> IncrementClickCountAsync(Guid shortUrlId, DateTime accessedAtUtc, CancellationToken ct)
+    {
+        var affectedRows = await _dbContext.ShortUrls
+            .Where(x =>
+                x.Id == shortUrlId &&
+                !x.IsDeleted &&
+                x.IsActive &&
+                (!x.ExpiresAtUtc.HasValue || x.ExpiresAtUtc.Value > accessedAtUtc))
+            .ExecuteUpdateAsync(update => update
+                .SetProperty(x => x.ClickCount, x => x.ClickCount + 1)
+                .SetProperty(x => x.LastAccessedAtUtc, accessedAtUtc), ct);
+
+        return affectedRows > 0;
     }
 
     public Task AddAccessLogAsync(ShortUrlAccessLog log, CancellationToken ct)

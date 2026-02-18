@@ -41,18 +41,12 @@ public class ShortUrlsController : ControllerBase
             return StatusCode(StatusCodes.Status429TooManyRequests, CreateError("RATE_LIMITED", $"Too many requests. Retry after {retryAfterSeconds} seconds.", new List<ErrorDetail>()));
         }
 
-        if (request == null)
-        {
-            throw new ValidationException(new[]
-            {
-                new FluentValidation.Results.ValidationFailure("request", "Request body is required.")
-            });
-        }
+        var validRequest = EnsureValidModelAndBody(request);
 
-        await _createValidator.ValidateAndThrowAsync(request, ct);
+        await _createValidator.ValidateAndThrowAsync(validRequest, ct);
 
         var baseHost = $"{Request.Scheme}://{Request.Host}";
-        var response = await _shortUrlService.CreateAsync(request, baseHost, ip, ct);
+        var response = await _shortUrlService.CreateAsync(validRequest, baseHost, ip, ct);
 
         return Created($"/api/v1/short-urls/{response.ShortCode}", response);
     }
@@ -72,17 +66,11 @@ public class ShortUrlsController : ControllerBase
     [HttpPatch("{shortCode}/status")]
     public async Task<IActionResult> UpdateStatus([FromRoute] string shortCode, [FromBody] UpdateStatusRequest? request, CancellationToken ct)
     {
-        if (request == null)
-        {
-            throw new ValidationException(new[]
-            {
-                new FluentValidation.Results.ValidationFailure("request", "Request body is required.")
-            });
-        }
+        var validRequest = EnsureValidModelAndBody(request);
 
-        await _updateStatusValidator.ValidateAndThrowAsync(request, ct);
+        await _updateStatusValidator.ValidateAndThrowAsync(validRequest, ct);
 
-        var response = await _shortUrlService.SetStatusAsync(shortCode, request.IsActive, ct);
+        var response = await _shortUrlService.SetStatusAsync(shortCode, validRequest.IsActive, ct);
         if (response == null)
         {
             return NotFound(CreateError("NOT_FOUND", "Short URL not found.", new List<ErrorDetail>()));
@@ -118,6 +106,32 @@ public class ShortUrlsController : ControllerBase
     private string GetClientIp()
     {
         return HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+    }
+
+    private T EnsureValidModelAndBody<T>(T? request) where T : class
+    {
+        if (!ModelState.IsValid)
+        {
+            var failures = ModelState
+                .Where(x => x.Value?.Errors.Count > 0)
+                .SelectMany(x => x.Value!.Errors.Select(e =>
+                    new FluentValidation.Results.ValidationFailure(
+                        string.IsNullOrWhiteSpace(x.Key) ? "request" : x.Key,
+                        string.IsNullOrWhiteSpace(e.ErrorMessage) ? "Invalid request body." : e.ErrorMessage)))
+                .ToList();
+
+            throw new ValidationException(failures);
+        }
+
+        if (request == null)
+        {
+            throw new ValidationException(new[]
+            {
+                new FluentValidation.Results.ValidationFailure("request", "Request body is required.")
+            });
+        }
+
+        return request;
     }
 
     private ErrorResponse CreateError(string code, string message, List<ErrorDetail> details)
