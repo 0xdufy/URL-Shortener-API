@@ -1,0 +1,11 @@
+E:\Projects\URL Shortener API\UrlShortener.Domain\bin\Debug\net8.0\UrlShortener.Domain.deps.json
+E:\Projects\URL Shortener API\UrlShortener.Domain\bin\Debug\net8.0\UrlShortener.Domain.dll
+E:\Projects\URL Shortener API\UrlShortener.Domain\bin\Debug\net8.0\UrlShortener.Domain.pdb
+E:\Projects\URL Shortener API\UrlShortener.Domain\obj\Debug\net8.0\UrlShortener.Domain.GeneratedMSBuildEditorConfig.editorconfig
+E:\Projects\URL Shortener API\UrlShortener.Domain\obj\Debug\net8.0\UrlShortener.Domain.AssemblyInfoInputs.cache
+E:\Projects\URL Shortener API\UrlShortener.Domain\obj\Debug\net8.0\UrlShortener.Domain.AssemblyInfo.cs
+E:\Projects\URL Shortener API\UrlShortener.Domain\obj\Debug\net8.0\UrlShortener.Domain.csproj.CoreCompileInputs.cache
+E:\Projects\URL Shortener API\UrlShortener.Domain\obj\Debug\net8.0\UrlShortener.Domain.dll
+E:\Projects\URL Shortener API\UrlShortener.Domain\obj\Debug\net8.0\refint\UrlShortener.Domain.dll
+E:\Projects\URL Shortener API\UrlShortener.Domain\obj\Debug\net8.0\UrlShortener.Domain.pdb
+E:\Projects\URL Shortener API\UrlShortener.Domain\obj\Debug\net8.0\ref\UrlShortener.Domain.dll

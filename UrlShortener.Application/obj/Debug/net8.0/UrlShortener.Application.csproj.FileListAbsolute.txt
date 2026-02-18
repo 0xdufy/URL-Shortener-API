@@ -1,0 +1,15 @@
+E:\Projects\URL Shortener API\UrlShortener.Application\bin\Debug\net8.0\UrlShortener.Application.deps.json
+E:\Projects\URL Shortener API\UrlShortener.Application\bin\Debug\net8.0\UrlShortener.Application.dll
+E:\Projects\URL Shortener API\UrlShortener.Application\bin\Debug\net8.0\UrlShortener.Application.pdb
+E:\Projects\URL Shortener API\UrlShortener.Application\bin\Debug\net8.0\UrlShortener.Domain.dll
+E:\Projects\URL Shortener API\UrlShortener.Application\bin\Debug\net8.0\UrlShortener.Domain.pdb
+E:\Projects\URL Shortener API\UrlShortener.Application\obj\Debug\net8.0\UrlShortener.Application.csproj.AssemblyReference.cache
+E:\Projects\URL Shortener API\UrlShortener.Application\obj\Debug\net8.0\UrlShortener.Application.GeneratedMSBuildEditorConfig.editorconfig
+E:\Projects\URL Shortener API\UrlShortener.Application\obj\Debug\net8.0\UrlShortener.Application.AssemblyInfoInputs.cache
+E:\Projects\URL Shortener API\UrlShortener.Application\obj\Debug\net8.0\UrlShortener.Application.AssemblyInfo.cs
+E:\Projects\URL Shortener API\UrlShortener.Application\obj\Debug\net8.0\UrlShortener.Application.csproj.CoreCompileInputs.cache
+E:\Projects\URL Shortener API\UrlShortener.Application\obj\Debug\net8.0\UrlShort.95A5A48A.Up2Date
+E:\Projects\URL Shortener API\UrlShortener.Application\obj\Debug\net8.0\UrlShortener.Application.dll
+E:\Projects\URL Shortener API\UrlShortener.Application\obj\Debug\net8.0\refint\UrlShortener.Application.dll
+E:\Projects\URL Shortener API\UrlShortener.Application\obj\Debug\net8.0\UrlShortener.Application.pdb
+E:\Projects\URL Shortener API\UrlShortener.Application\obj\Debug\net8.0\ref\UrlShortener.Application.dll

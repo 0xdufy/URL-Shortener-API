@@ -1,0 +1,12 @@
+{
+  "version": 2,
+  "dgSpecHash": "IEatDxeTbRY=",
+  "success": true,
+  "projectFilePath": "E:\\Projects\\URL Shortener API\\UrlShortener.Application\\UrlShortener.Application.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\Adham\\.nuget\\packages\\automapper\\12.0.1\\automapper.12.0.1.nupkg.sha512",
+    "C:\\Users\\Adham\\.nuget\\packages\\fluentvalidation\\11.11.0\\fluentvalidation.11.11.0.nupkg.sha512",
+    "C:\\Users\\Adham\\.nuget\\packages\\microsoft.csharp\\4.7.0\\microsoft.csharp.4.7.0.nupkg.sha512"
+  ],
+  "logs": []
+}
