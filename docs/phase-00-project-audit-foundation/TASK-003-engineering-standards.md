@@ -1,6 +1,6 @@
 # TASK-003 — Engineering Standards and Repository Conventions
 
-**Status:** Planned  
+**Status:** Completed  
 **Phase:** 00 — Project Audit & Engineering Foundation
 
 ## Goal
@@ -39,16 +39,16 @@ Add repository-level configuration only where it provides enforceable value, suc
 
 ## Acceptance Criteria
 
-- [ ] `docs/engineering-standards.md` exists and is specific to this repository.
-- [ ] Backend and Angular conventions are both covered.
-- [ ] Dependency-direction rules agree with the PRD and do not force unnecessary abstractions.
-- [ ] Async I/O methods are required to propagate cancellation when meaningful.
-- [ ] Date/time conventions require UTC at persistence/API boundaries unless explicitly documented otherwise.
-- [ ] Secret/logging rules explicitly forbid passwords, session tokens, refresh tokens, API-key secrets, and authorization headers in logs.
-- [ ] Migration rules prohibit editing already-applied production migrations without an explicit migration strategy.
-- [ ] Public contract changes require documentation and review.
-- [ ] Any added formatter/analyzer configuration builds successfully with the current codebase or exceptions are documented for Phase 01.
-- [ ] No automated test files are introduced.
+- [x] `docs/engineering-standards.md` exists and is specific to this repository.
+- [x] Backend and Angular conventions are both covered.
+- [x] Dependency-direction rules agree with the PRD and do not force unnecessary abstractions.
+- [x] Async I/O methods are required to propagate cancellation when meaningful.
+- [x] Date/time conventions require UTC at persistence/API boundaries unless explicitly documented otherwise.
+- [x] Secret/logging rules explicitly forbid passwords, session tokens, refresh tokens, API-key secrets, and authorization headers in logs.
+- [x] Migration rules prohibit editing already-applied production migrations without an explicit migration strategy.
+- [x] Public contract changes require documentation and review.
+- [x] Any added formatter/analyzer configuration builds successfully with the current codebase or exceptions are documented for Phase 01.
+- [x] No automated test files are introduced.
 
 ## Verification
 
@@ -57,3 +57,11 @@ Apply formatting/build commands defined by the new standard to the current repos
 ## Completion Gate
 
 Future Codex tasks have one explicit set of repository conventions to follow instead of inferring style and architecture independently.
+
+## Implementation and Verification Record
+
+- Completed 2026-08-11.
+- Added `docs/engineering-standards.md` with backend, Angular, dependency, configuration, migration, API, logging, generated-file, task/review, ADR, package, and tool conventions.
+- Added a low-churn root `.editorconfig` for encoding, whitespace, indentation, and core C# conventions.
+- Kept warnings-as-errors and central package management deferred to Phase 01 while requiring a zero-warning baseline now.
+- `dotnet format UrlShortener.sln --verify-no-changes --no-restore` succeeded and formatted 0 of 56 files.

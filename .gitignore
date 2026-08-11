@@ -1,15 +1,48 @@
+# Repository-local task and IDE state
 .tasks/
 .vs/
+.vscode/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
 
-# Build artifacts
-**/bin/
-**/obj/
-**/buildobj/
+# .NET build and package artifacts
+**/[Bb]in/
+**/[Oo]bj/
+**/[Bb]uildobj/
+artifacts/
+.artifacts/
+TestResults/
+*.nupkg
+*.snupkg
 
-# Logs
+# Frontend dependencies and generated output
+node_modules/
+dist/
+coverage/
+.angular/
+.nx/
+
+# Logs, diagnostics, and temporary files
 *.log
 logs/
-
-# Temp files
 *.tmp
+*.temp
 *.cache
+*.pid
+*.dmp
+
+# Local environment and secret-bearing overrides
+.env
+.env.*
+!.env.example
+appsettings.Local.json
+appsettings.*.Local.json
+secrets.json
+
+# OS metadata
+.DS_Store
+Thumbs.db
+Desktop.ini

@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Caching.Memory;
-using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Options;
 using UrlShortener.Application.Interfaces;
+using UrlShortener.Infrastructure.Configuration;
 
 namespace UrlShortener.Infrastructure.RateLimiting;
 
@@ -10,11 +11,10 @@ public class InMemoryRateLimiter : IRateLimiter
     private readonly int _createPerMinuteLimit;
     private readonly object _lock = new();
 
-    public InMemoryRateLimiter(IMemoryCache memoryCache, IConfiguration configuration)
+    public InMemoryRateLimiter(IMemoryCache memoryCache, IOptions<RateLimitingOptions> options)
     {
         _memoryCache = memoryCache;
-        var configuredValue = configuration["RateLimiting:CreatePerMinuteLimit"];
-        _createPerMinuteLimit = int.TryParse(configuredValue, out var limit) ? limit : 20;
+        _createPerMinuteLimit = options.Value.CreatePerMinuteLimit;
     }
 
     public bool IsAllowed(string ip, DateTime utcNow, out int remaining, out int retryAfterSeconds)

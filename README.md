@@ -1,26 +1,22 @@
 # URL Shortener API
 
 ## Overview
-URL Shortener API is a .NET 8 ASP.NET Core Web API for creating short URLs, redirecting with short codes, tracking clicks, viewing stats, toggling active status, and soft deleting links.
+URL Shortener API is a .NET 10 ASP.NET Core Web API for creating short URLs, redirecting with short codes, tracking clicks, viewing stats, toggling active status, and soft deleting links.
 
 ## Local Setup
 
 ### 1) Prerequisites
-- .NET 8 SDK
+- .NET 10 SDK (the repository `global.json` accepts the latest installed 10.0.1xx patch)
 - SQL Server (LocalDB or a full SQL Server instance)
 
 ### 2) Configuration
-Set the SQL Server connection string in `UrlShortener.Api/appsettings.json`:
+Development defaults to the non-production in-memory repository. To use SQL Server, supply the connection string through user secrets, an environment-specific untracked configuration source, or an environment variable:
 
-```json
-{
-  "ConnectionStrings": {
-    "SqlServer": "Server=(localdb)\\MSSQLLocalDB;Database=UrlShortenerDb;Trusted_Connection=True;TrustServerCertificate=True;Encrypt=False;"
-  }
-}
+```powershell
+$env:ConnectionStrings__SqlServer = "Server=(localdb)\MSSQLLocalDB;Database=UrlShortenerDb;Trusted_Connection=True;TrustServerCertificate=True;Encrypt=False;"
 ```
 
-For local runs without SQL Server, keep:
+For a local in-memory run, use the Development environment and keep:
 
 ```json
 {
@@ -30,20 +26,36 @@ For local runs without SQL Server, keep:
 }
 ```
 
-Set `UseInMemory` to `false` when using SQL Server.
+Set `UseInMemory` to `false` when using SQL Server. In-memory storage is rejected outside Development and loses data on shutdown. See [Persistence and Migrations](docs/persistence.md) for all validated settings and limitations.
+
+Authentication always requires SQL Server. Generate a random 32-byte JWT signing key and supply it through secrets or an environment variable:
+
+```powershell
+$jwtKeyBytes = New-Object byte[] 32
+$rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+$rng.GetBytes($jwtKeyBytes)
+$rng.Dispose()
+$env:Identity__JwtSigningKeyBase64 = [Convert]::ToBase64String($jwtKeyBytes)
+$env:Storage__UseInMemory = "false"
+```
+
+See [Authentication and Session API](docs/authentication.md) for endpoint contracts, refresh-cookie/CSRF handling, expiration, revocation, and all identity configuration.
+See [Authorization Boundaries](docs/authorization.md) for protected URL-management routes and owner-scoped access semantics.
+See [URL Creation Contract](docs/url-creation.md) for validation, UTC expiry, entropy, and concurrency-safe uniqueness behavior.
 
 ### 3) Database setup
-Install EF CLI if needed:
+Restore the repository-pinned EF CLI:
 
 ```bash
-dotnet tool install --global dotnet-ef
+dotnet tool restore
 ```
 
 Apply migrations:
 
-```bash
-cd UrlShortener.Api
-dotnet ef database update --project ../UrlShortener.Infrastructure --startup-project .
+```powershell
+$env:ASPNETCORE_ENVIRONMENT = "Development"
+$env:Storage__UseInMemory = "false"
+dotnet ef database update --project UrlShortener.Infrastructure --startup-project UrlShortener.Api
 ```
 
 ### 4) Run the API
@@ -65,13 +77,24 @@ Example: if you call `POST` on `https://localhost:7221`, the API returns `shortU
 
 ## Endpoints
 
+### Authentication `/api/v1/auth`
+
+- `POST /register`: create an account and session.
+- `POST /sign-in`: authenticate with email and password.
+- `GET /me`: return safe current-user/session metadata; requires a bearer access token.
+- `POST /refresh`: rotate the HttpOnly refresh cookie; requires the documented origin and antiforgery inputs.
+- `POST /sign-out`: revoke the refresh family and delete the cookie.
+
+Access tokens are returned in JSON and expire after 10 minutes by default. Raw refresh tokens are never returned in response bodies or stored in plaintext.
+
 ### 1) POST `/api/v1/short-urls`
-Creates a short URL.
+Creates a short URL. This and every `/api/v1/short-urls` management endpoint require the authenticated owner's bearer access token; missing or invalid tokens return `401 AUTHENTICATION_REQUIRED`.
 
 Request with only `originalUrl`:
 
 ```bash
 curl -X POST "https://localhost:7221/api/v1/short-urls" \
+  -H "Authorization: Bearer $accessToken" \
   -H "Content-Type: application/json" \
   -d "{\"originalUrl\":\"https://example.com/articles/hello\"}"
 ```
@@ -80,6 +103,7 @@ Request with `originalUrl + customAlias + expiresAtUtc`:
 
 ```bash
 curl -X POST "https://localhost:7221/api/v1/short-urls" \
+  -H "Authorization: Bearer $accessToken" \
   -H "Content-Type: application/json" \
   -d "{\"originalUrl\":\"https://example.com/docs\",\"customAlias\":\"myAlias_01\",\"expiresAtUtc\":\"2026-12-31T00:00:00Z\"}"
 ```
@@ -102,8 +126,11 @@ Sample success response (`201 Created`):
 Status codes:
 - `201 Created`: short URL created
 - `400 Bad Request`: validation error (invalid URL, invalid alias, invalid expiry, missing body)
-- `409 Conflict`: alias already exists
+- `409 Conflict`: alias already exists (`ALIAS_CONFLICT`)
 - `429 Too Many Requests`: create rate limit exceeded (`Retry-After` header is returned)
+- `500 Internal Server Error`: generated-code creation exhausted its five collision attempts (`SHORTCODE_GENERATION_FAILED`) or an unexpected persistence failure occurred
+
+Generated codes are eight case-sensitive base-62 characters. `originalUrl` is limited to 2,048 characters, and a supplied `expiresAtUtc` must be a future UTC timestamp ending in `Z`.
 
 ### 2) GET `/r/{shortCode}`
 Redirects to the original URL.
@@ -123,7 +150,8 @@ Status codes:
 Returns short URL details.
 
 ```bash
-curl "https://localhost:7221/api/v1/short-urls/myAlias_01"
+curl "https://localhost:7221/api/v1/short-urls/myAlias_01" \
+  -H "Authorization: Bearer $accessToken"
 ```
 
 Sample response (`200 OK`):
@@ -151,6 +179,7 @@ Updates active/inactive state.
 
 ```bash
 curl -X PATCH "https://localhost:7221/api/v1/short-urls/myAlias_01/status" \
+  -H "Authorization: Bearer $accessToken" \
   -H "Content-Type: application/json" \
   -d "{\"isActive\":false}"
 ```
@@ -179,7 +208,8 @@ Status codes:
 Soft deletes a short URL.
 
 ```bash
-curl -X DELETE "https://localhost:7221/api/v1/short-urls/myAlias_01"
+curl -X DELETE "https://localhost:7221/api/v1/short-urls/myAlias_01" \
+  -H "Authorization: Bearer $accessToken"
 ```
 
 Status codes:
@@ -192,13 +222,15 @@ Returns click stats.
 Without query params (defaults to last 30 days):
 
 ```bash
-curl "https://localhost:7221/api/v1/short-urls/myAlias_01/stats"
+curl "https://localhost:7221/api/v1/short-urls/myAlias_01/stats" \
+  -H "Authorization: Bearer $accessToken"
 ```
 
 With `fromUtc`/`toUtc`:
 
 ```bash
-curl "https://localhost:7221/api/v1/short-urls/myAlias_01/stats?fromUtc=2026-02-01T00:00:00Z&toUtc=2026-02-18T23:59:59Z"
+curl "https://localhost:7221/api/v1/short-urls/myAlias_01/stats?fromUtc=2026-02-01T00:00:00Z&toUtc=2026-02-18T23:59:59Z" \
+  -H "Authorization: Bearer $accessToken"
 ```
 
 Sample response (`200 OK`):

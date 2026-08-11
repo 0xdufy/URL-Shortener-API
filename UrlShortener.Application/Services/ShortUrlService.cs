@@ -1,4 +1,3 @@
-using AutoMapper;
 using UrlShortener.Application.Dtos;
 using UrlShortener.Application.Exceptions;
 using UrlShortener.Application.Interfaces;
@@ -8,74 +7,65 @@ namespace UrlShortener.Application.Services;
 
 public class ShortUrlService : IShortUrlService
 {
+    private const int GeneratedShortCodeLength = 8;
+    private const int MaxGeneratedShortCodeAttempts = 5;
+
     private readonly IShortUrlRepository _repository;
     private readonly IShortCodeGenerator _shortCodeGenerator;
     private readonly IShortUrlCache _shortUrlCache;
     private readonly IDateTimeProvider _dateTimeProvider;
-    private readonly IMapper _mapper;
+    private readonly ICurrentUserContext _currentUserContext;
 
     public ShortUrlService(
         IShortUrlRepository repository,
         IShortCodeGenerator shortCodeGenerator,
         IShortUrlCache shortUrlCache,
         IDateTimeProvider dateTimeProvider,
-        IMapper mapper)
+        ICurrentUserContext currentUserContext)
     {
         _repository = repository;
         _shortCodeGenerator = shortCodeGenerator;
         _shortUrlCache = shortUrlCache;
         _dateTimeProvider = dateTimeProvider;
-        _mapper = mapper;
+        _currentUserContext = currentUserContext;
     }
 
     public async Task<ShortUrlResponse> CreateAsync(CreateShortUrlRequest req, string baseHost, string clientIp, CancellationToken ct)
     {
+        var ownerId = RequireCurrentUserId();
         var nowUtc = _dateTimeProvider.UtcNow;
-        string? shortCode = null;
+        ShortUrl entity;
 
         if (!string.IsNullOrWhiteSpace(req.CustomAlias))
         {
-            var aliasExists = await _repository.ShortCodeExistsAsync(req.CustomAlias, ct);
-            if (aliasExists)
+            entity = CreateEntity(req, req.CustomAlias, ownerId, nowUtc);
+            var creationResult = await _repository.TryCreateAsync(entity, ct);
+            if (creationResult == ShortUrlCreationResult.ShortCodeConflict)
             {
                 throw new AliasConflictException("Custom alias already exists.");
             }
-
-            shortCode = req.CustomAlias;
         }
         else
         {
-            for (var i = 0; i < 5; i++)
+            entity = null!;
+
+            for (var attempt = 0; attempt < MaxGeneratedShortCodeAttempts; attempt++)
             {
-                var generated = _shortCodeGenerator.Generate(6);
-                var exists = await _repository.ShortCodeExistsAsync(generated, ct);
-                if (!exists)
+                var generatedCode = _shortCodeGenerator.Generate(GeneratedShortCodeLength);
+                var candidate = CreateEntity(req, generatedCode, ownerId, nowUtc);
+                var creationResult = await _repository.TryCreateAsync(candidate, ct);
+                if (creationResult == ShortUrlCreationResult.Created)
                 {
-                    shortCode = generated;
+                    entity = candidate;
                     break;
                 }
             }
 
-            if (shortCode == null)
+            if (entity == null)
             {
                 throw new ShortCodeGenerationFailedException("Failed to generate unique short code.");
             }
         }
-
-        var entity = new ShortUrl
-        {
-            Id = Guid.NewGuid(),
-            OriginalUrl = req.OriginalUrl,
-            ShortCode = shortCode,
-            CreatedAtUtc = nowUtc,
-            ExpiresAtUtc = req.ExpiresAtUtc,
-            IsActive = true,
-            IsDeleted = false,
-            ClickCount = 0
-        };
-
-        await _repository.AddShortUrlAsync(entity, ct);
-        await _repository.SaveChangesAsync(ct);
 
         var cacheModel = new ShortUrlCacheModel
         {
@@ -88,26 +78,47 @@ public class ShortUrlService : IShortUrlService
 
         await _shortUrlCache.SetAsync(entity.ShortCode, cacheModel, CalculateTtl(entity.ExpiresAtUtc, nowUtc), ct);
 
-        var response = _mapper.Map<ShortUrlResponse>(entity);
+        var response = ToShortUrlResponse(entity);
         response.ShortUrl = $"{baseHost}/r/{entity.ShortCode}";
 
         return response;
     }
 
+    private static ShortUrl CreateEntity(
+        CreateShortUrlRequest request,
+        string shortCode,
+        Guid ownerId,
+        DateTime nowUtc)
+    {
+        return new ShortUrl(ownerId)
+        {
+            Id = Guid.NewGuid(),
+            OriginalUrl = request.OriginalUrl,
+            ShortCode = shortCode,
+            CreatedAtUtc = nowUtc,
+            ExpiresAtUtc = request.ExpiresAtUtc,
+            IsActive = true,
+            IsDeleted = false,
+            ClickCount = 0
+        };
+    }
+
     public async Task<ShortUrlDetailsResponse?> GetAsync(string shortCode, CancellationToken ct)
     {
-        var entity = await _repository.GetByShortCodeNotDeletedAsync(shortCode, ct);
+        var ownerId = RequireCurrentUserId();
+        var entity = await _repository.GetOwnedByShortCodeNotDeletedAsync(shortCode, ownerId, ct);
         if (entity == null)
         {
             return null;
         }
 
-        return _mapper.Map<ShortUrlDetailsResponse>(entity);
+        return ToShortUrlDetailsResponse(entity);
     }
 
     public async Task<ShortUrlDetailsResponse?> SetStatusAsync(string shortCode, bool isActive, CancellationToken ct)
     {
-        var entity = await _repository.GetByShortCodeNotDeletedAsync(shortCode, ct);
+        var ownerId = RequireCurrentUserId();
+        var entity = await _repository.GetOwnedByShortCodeNotDeletedAsync(shortCode, ownerId, ct);
         if (entity == null)
         {
             return null;
@@ -118,12 +129,13 @@ public class ShortUrlService : IShortUrlService
         await _repository.SaveChangesAsync(ct);
         await _shortUrlCache.RemoveAsync(shortCode, ct);
 
-        return _mapper.Map<ShortUrlDetailsResponse>(entity);
+        return ToShortUrlDetailsResponse(entity);
     }
 
     public async Task<bool> DeleteAsync(string shortCode, CancellationToken ct)
     {
-        var entity = await _repository.GetByShortCodeNotDeletedAsync(shortCode, ct);
+        var ownerId = RequireCurrentUserId();
+        var entity = await _repository.GetOwnedByShortCodeNotDeletedAsync(shortCode, ownerId, ct);
         if (entity == null)
         {
             return false;
@@ -140,7 +152,8 @@ public class ShortUrlService : IShortUrlService
 
     public async Task<StatsResponse?> GetStatsAsync(string shortCode, DateTime? fromUtc, DateTime? toUtc, CancellationToken ct)
     {
-        var entity = await _repository.GetByShortCodeNotDeletedAsync(shortCode, ct);
+        var ownerId = RequireCurrentUserId();
+        var entity = await _repository.GetOwnedByShortCodeNotDeletedAsync(shortCode, ownerId, ct);
         if (entity == null)
         {
             return null;
@@ -255,6 +268,17 @@ public class ShortUrlService : IShortUrlService
         return true;
     }
 
+    private Guid RequireCurrentUserId()
+    {
+        var userId = _currentUserContext.UserId;
+        if (!userId.HasValue || userId.Value == Guid.Empty)
+        {
+            throw new AuthenticatedUserRequiredException();
+        }
+
+        return userId.Value;
+    }
+
     private static TimeSpan CalculateTtl(DateTime? expiresAtUtc, DateTime nowUtc)
     {
         if (expiresAtUtc.HasValue)
@@ -269,5 +293,35 @@ public class ShortUrlService : IShortUrlService
         }
 
         return TimeSpan.FromHours(24);
+    }
+
+    private static ShortUrlResponse ToShortUrlResponse(ShortUrl entity)
+    {
+        return new ShortUrlResponse
+        {
+            Id = entity.Id,
+            OriginalUrl = entity.OriginalUrl,
+            ShortCode = entity.ShortCode,
+            CreatedAtUtc = entity.CreatedAtUtc,
+            ExpiresAtUtc = entity.ExpiresAtUtc,
+            IsActive = entity.IsActive,
+            ClickCount = entity.ClickCount
+        };
+    }
+
+    private static ShortUrlDetailsResponse ToShortUrlDetailsResponse(ShortUrl entity)
+    {
+        return new ShortUrlDetailsResponse
+        {
+            Id = entity.Id,
+            OriginalUrl = entity.OriginalUrl,
+            ShortCode = entity.ShortCode,
+            CreatedAtUtc = entity.CreatedAtUtc,
+            ExpiresAtUtc = entity.ExpiresAtUtc,
+            IsActive = entity.IsActive,
+            IsDeleted = entity.IsDeleted,
+            ClickCount = entity.ClickCount,
+            LastAccessedAtUtc = entity.LastAccessedAtUtc
+        };
     }
 }

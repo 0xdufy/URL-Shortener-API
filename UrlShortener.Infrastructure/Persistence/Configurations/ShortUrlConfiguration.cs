@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using UrlShortener.Domain.Entities;
+using UrlShortener.Infrastructure.Identity;
 
 namespace UrlShortener.Infrastructure.Persistence.Configurations;
 
@@ -11,6 +12,8 @@ public class ShortUrlConfiguration : IEntityTypeConfiguration<ShortUrl>
         builder.ToTable("ShortUrls");
 
         builder.HasKey(x => x.Id);
+
+        builder.Property(x => x.OwnerId);
 
         builder.Property(x => x.OriginalUrl)
             .IsRequired()
@@ -47,9 +50,16 @@ public class ShortUrlConfiguration : IEntityTypeConfiguration<ShortUrl>
             .HasColumnType("datetime2");
 
         builder.HasIndex(x => x.ShortCode)
-            .IsUnique();
+            .IsUnique()
+            .HasDatabaseName("IX_ShortUrls_ShortCode");
 
         builder.HasIndex(x => x.IsDeleted);
         builder.HasIndex(x => x.ExpiresAtUtc);
+        builder.HasIndex(x => new { x.OwnerId, x.CreatedAtUtc });
+
+        builder.HasOne<ApplicationUser>()
+            .WithMany(x => x.ShortUrls)
+            .HasForeignKey(x => x.OwnerId)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }

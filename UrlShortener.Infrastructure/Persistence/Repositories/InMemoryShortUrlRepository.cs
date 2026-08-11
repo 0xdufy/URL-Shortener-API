@@ -10,31 +10,30 @@ public class InMemoryShortUrlRepository : IShortUrlRepository
     private readonly Dictionary<string, Guid> _shortUrlIdsByCode = new(StringComparer.Ordinal);
     private readonly List<ShortUrlAccessLog> _accessLogs = new();
 
-    public Task<bool> ShortCodeExistsAsync(string shortCode, CancellationToken ct)
+    public Task<ShortUrlCreationResult> TryCreateAsync(ShortUrl entity, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
+
         lock (_sync)
         {
-            return Task.FromResult(_shortUrlIdsByCode.ContainsKey(shortCode));
+            if (_shortUrlIdsByCode.ContainsKey(entity.ShortCode))
+            {
+                return Task.FromResult(ShortUrlCreationResult.ShortCodeConflict);
+            }
+
+            _shortUrlsById.Add(entity.Id, entity);
+            _shortUrlIdsByCode.Add(entity.ShortCode, entity.Id);
+            return Task.FromResult(ShortUrlCreationResult.Created);
         }
     }
 
-    public Task AddShortUrlAsync(ShortUrl entity, CancellationToken ct)
-    {
-        lock (_sync)
-        {
-            _shortUrlsById[entity.Id] = entity;
-            _shortUrlIdsByCode[entity.ShortCode] = entity.Id;
-        }
-
-        return Task.CompletedTask;
-    }
-
-    public Task<ShortUrl?> GetByShortCodeNotDeletedAsync(string shortCode, CancellationToken ct)
+    public Task<ShortUrl?> GetOwnedByShortCodeNotDeletedAsync(string shortCode, Guid ownerId, CancellationToken ct)
     {
         lock (_sync)
         {
             if (_shortUrlIdsByCode.TryGetValue(shortCode, out var id) &&
                 _shortUrlsById.TryGetValue(id, out var entity) &&
+                entity.OwnerId == ownerId &&
                 !entity.IsDeleted)
             {
                 return Task.FromResult<ShortUrl?>(entity);

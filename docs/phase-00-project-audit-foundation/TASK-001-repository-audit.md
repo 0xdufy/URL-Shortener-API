@@ -1,6 +1,6 @@
 # TASK-001 — Repository Audit and Baseline Inventory
 
-**Status:** Planned  
+**Status:** Completed  
 **Phase:** 00 — Project Audit & Engineering Foundation
 
 ## Goal
@@ -41,16 +41,16 @@ Create `docs/phase-00-project-audit-foundation/audit-report.md` containing:
 
 ## Acceptance Criteria
 
-- [ ] Audit report is based on inspected repository content, not README assumptions alone.
-- [ ] Every project and its direct project references are documented.
-- [ ] Every currently exposed API endpoint is listed with method and route.
-- [ ] Existing persistence entities and unique/index constraints relevant to URL lookup are documented.
-- [ ] Existing `IMemoryCache` and in-memory rate-limiter assumptions are documented.
-- [ ] The synchronous redirect analytics write path is explicitly documented.
-- [ ] Tracked `bin/`, `obj/`, logs, secrets, or other generated/local artifacts are identified by path if present.
-- [ ] Build command and observed result are recorded.
-- [ ] Risks include evidence/path references and recommended disposition.
-- [ ] No production code behavior is changed by this task.
+- [x] Audit report is based on inspected repository content, not README assumptions alone.
+- [x] Every project and its direct project references are documented.
+- [x] Every currently exposed API endpoint is listed with method and route.
+- [x] Existing persistence entities and unique/index constraints relevant to URL lookup are documented.
+- [x] Existing `IMemoryCache` and in-memory rate-limiter assumptions are documented.
+- [x] The synchronous redirect analytics write path is explicitly documented.
+- [x] Tracked `bin/`, `obj/`, logs, secrets, or other generated/local artifacts are identified by path if present.
+- [x] Build command and observed result are recorded.
+- [x] Risks include evidence/path references and recommended disposition.
+- [x] No production code behavior is changed by this task.
 
 ## Verification
 
@@ -59,3 +59,10 @@ Run the repository build and any non-test static checks already present. Record 
 ## Completion Gate
 
 This task is complete only when another engineer can read the audit report and understand the current technical baseline well enough to review Phase 01 design decisions.
+
+## Implementation and Verification Record
+
+- Completed 2026-08-11.
+- Added `audit-report.md` based on the inspected working tree, project files, source, EF configuration/migration, configuration, tracked-file inventory, and dependency inventory.
+- Restored and built `UrlShortener.sln` with .NET SDK 10.0.110: 0 warnings and 0 errors.
+- Recorded the sandboxed NuGet failure separately from the successful network-enabled restore.

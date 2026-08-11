@@ -1,17 +1,25 @@
 using System.Text.Json;
 using FluentValidation;
+using Microsoft.AspNetCore.Antiforgery;
 using UrlShortener.Api.Models;
+using UrlShortener.Api.Security;
 using UrlShortener.Application.Exceptions;
 
 namespace UrlShortener.Api.Middlewares;
 
 public class ExceptionHandlingMiddleware
 {
-    private readonly RequestDelegate _next;
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
-    public ExceptionHandlingMiddleware(RequestDelegate next)
+    private readonly RequestDelegate _next;
+    private readonly ILogger<ExceptionHandlingMiddleware> _logger;
+
+    public ExceptionHandlingMiddleware(
+        RequestDelegate next,
+        ILogger<ExceptionHandlingMiddleware> logger)
     {
         _next = next;
+        _logger = logger;
     }
 
     public async Task InvokeAsync(HttpContext context)
@@ -26,7 +34,7 @@ public class ExceptionHandlingMiddleware
         }
     }
 
-    private static async Task HandleAsync(HttpContext context, Exception exception)
+    private async Task HandleAsync(HttpContext context, Exception exception)
     {
         var statusCode = StatusCodes.Status500InternalServerError;
         var code = "UNEXPECTED_ERROR";
@@ -77,6 +85,61 @@ public class ExceptionHandlingMiddleware
             code = "SHORTCODE_GENERATION_FAILED";
             message = "Failed to generate short code.";
         }
+        else if (exception is AccountUnavailableException)
+        {
+            statusCode = StatusCodes.Status409Conflict;
+            code = "ACCOUNT_UNAVAILABLE";
+            message = "An account cannot be created with the supplied identity.";
+        }
+        else if (exception is PasswordPolicyException)
+        {
+            statusCode = StatusCodes.Status400BadRequest;
+            code = "VALIDATION_ERROR";
+            message = "Validation failed.";
+            details.Add(new ErrorDetail
+            {
+                Field = "password",
+                Message = "Password does not satisfy the configured password policy."
+            });
+        }
+        else if (exception is InvalidCredentialsException)
+        {
+            statusCode = StatusCodes.Status401Unauthorized;
+            code = "AUTHENTICATION_FAILED";
+            message = "Invalid credentials.";
+        }
+        else if (exception is InvalidSessionException)
+        {
+            statusCode = StatusCodes.Status401Unauthorized;
+            code = "INVALID_SESSION";
+            message = "Authentication session is invalid or expired.";
+        }
+        else if (exception is AuthenticatedUserRequiredException)
+        {
+            statusCode = StatusCodes.Status401Unauthorized;
+            code = "AUTHENTICATION_REQUIRED";
+            message = "A valid access token is required.";
+        }
+        else if (exception is AuthenticationPersistenceUnavailableException)
+        {
+            statusCode = StatusCodes.Status503ServiceUnavailable;
+            code = "AUTHENTICATION_UNAVAILABLE";
+            message = "Authentication is temporarily unavailable.";
+        }
+        else if (exception is CsrfValidationException or AntiforgeryValidationException)
+        {
+            statusCode = StatusCodes.Status400BadRequest;
+            code = "CSRF_VALIDATION_FAILED";
+            message = "Request origin or antiforgery validation failed.";
+        }
+
+        if (code == "UNEXPECTED_ERROR")
+        {
+            _logger.LogError(
+                exception,
+                "Unhandled exception while processing request {TraceId}.",
+                context.TraceIdentifier);
+        }
 
         context.Response.StatusCode = statusCode;
         context.Response.ContentType = "application/json";
@@ -92,7 +155,7 @@ public class ExceptionHandlingMiddleware
             }
         };
 
-        var json = JsonSerializer.Serialize(response);
+        var json = JsonSerializer.Serialize(response, JsonOptions);
         await context.Response.WriteAsync(json);
     }
 

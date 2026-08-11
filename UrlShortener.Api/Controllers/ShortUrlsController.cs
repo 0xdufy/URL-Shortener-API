@@ -1,4 +1,5 @@
 using FluentValidation;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using UrlShortener.Api.Models;
 using UrlShortener.Application.Dtos;
@@ -7,6 +8,7 @@ using UrlShortener.Application.Interfaces;
 namespace UrlShortener.Api.Controllers;
 
 [ApiController]
+[Authorize]
 [Route("api/v1/short-urls")]
 public class ShortUrlsController : ControllerBase
 {
@@ -31,6 +33,13 @@ public class ShortUrlsController : ControllerBase
     }
 
     [HttpPost]
+    [Consumes("application/json")]
+    [ProducesResponseType(typeof(ShortUrlResponse), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status429TooManyRequests)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> Create([FromBody] CreateShortUrlRequest? request, CancellationToken ct)
     {
         var ip = GetClientIp();

@@ -1,10 +1,10 @@
 # Delivery Documentation
 
-This directory is the execution plan for the product defined in `/PRD.md`.
+This directory is the execution plan for the product defined in `docs/PRD.md`.
 
 ## Active Phase
 
-**Phase 00 — Project Audit & Engineering Foundation**
+**Phase 03 — Owned URL Lifecycle & Management API**
 
 Do not start a later phase until the active phase completion gate is satisfied, unless a documented dependency explicitly requires it.
 
@@ -40,9 +40,16 @@ Use exactly one of:
 - `Blocked`
 - `Completed`
 
+## Reference Documents
+
+- `authentication.md` describes account and session behavior.
+- `authorization.md` defines protected management routes, owner-scoped access, and the 401/403/404 concealment policy.
+- `persistence.md` describes storage configuration and migration operations.
+- `resource-ownership.md` defines immutable ownership, legacy short-link treatment, and rules for future owned resources.
+
 ## Execution Rules
 
-1. Read `/PRD.md` before working on any task.
+1. Read `docs/PRD.md` before working on any task.
 2. Work on the lowest-numbered incomplete task in the active phase unless dependencies require another order.
 3. Keep changes within task scope.
 4. If a blocking design conflict is discovered, set the task to `Blocked`, document the conflict and evidence, and stop the conflicting implementation.

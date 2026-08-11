@@ -1,3 +1,4 @@
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using UrlShortener.Application.Interfaces;
 using UrlShortener.Domain.Entities;
@@ -7,6 +8,7 @@ namespace UrlShortener.Infrastructure.Persistence.Repositories;
 public class ShortUrlRepository : IShortUrlRepository
 {
     private const string CaseSensitiveCollation = "Latin1_General_CS_AS";
+    private const string ShortCodeUniqueIndexName = "IX_ShortUrls_ShortCode";
     private readonly AppDbContext _dbContext;
 
     public ShortUrlRepository(AppDbContext dbContext)
@@ -14,21 +16,30 @@ public class ShortUrlRepository : IShortUrlRepository
         _dbContext = dbContext;
     }
 
-    public Task<bool> ShortCodeExistsAsync(string shortCode, CancellationToken ct)
+    public async Task<ShortUrlCreationResult> TryCreateAsync(ShortUrl entity, CancellationToken ct)
     {
-        return _dbContext.ShortUrls
-            .AnyAsync(x => EF.Functions.Collate(x.ShortCode, CaseSensitiveCollation) == shortCode, ct);
+        await _dbContext.ShortUrls.AddAsync(entity, ct);
+
+        try
+        {
+            await _dbContext.SaveChangesAsync(ct);
+            return ShortUrlCreationResult.Created;
+        }
+        catch (DbUpdateException exception) when (IsShortCodeConflict(exception))
+        {
+            _dbContext.Entry(entity).State = EntityState.Detached;
+            return ShortUrlCreationResult.ShortCodeConflict;
+        }
     }
 
-    public Task AddShortUrlAsync(ShortUrl entity, CancellationToken ct)
-    {
-        return _dbContext.ShortUrls.AddAsync(entity, ct).AsTask();
-    }
-
-    public Task<ShortUrl?> GetByShortCodeNotDeletedAsync(string shortCode, CancellationToken ct)
+    public Task<ShortUrl?> GetOwnedByShortCodeNotDeletedAsync(string shortCode, Guid ownerId, CancellationToken ct)
     {
         return _dbContext.ShortUrls
-            .FirstOrDefaultAsync(x => EF.Functions.Collate(x.ShortCode, CaseSensitiveCollation) == shortCode && !x.IsDeleted, ct);
+            .FirstOrDefaultAsync(
+                x => EF.Functions.Collate(x.ShortCode, CaseSensitiveCollation) == shortCode &&
+                    x.OwnerId == ownerId &&
+                    !x.IsDeleted,
+                ct);
     }
 
     public Task<ShortUrl?> GetByShortCodeAnyAsync(string shortCode, CancellationToken ct)
@@ -77,5 +88,19 @@ public class ShortUrlRepository : IShortUrlRepository
     public Task SaveChangesAsync(CancellationToken ct)
     {
         return _dbContext.SaveChangesAsync(ct);
+    }
+
+    private static bool IsShortCodeConflict(DbUpdateException exception)
+    {
+        if (exception.InnerException is not SqlException sqlException)
+        {
+            return false;
+        }
+
+        return sqlException.Errors
+            .Cast<SqlError>()
+            .Any(error =>
+                error.Number is 2601 or 2627 &&
+                error.Message.Contains(ShortCodeUniqueIndexName, StringComparison.OrdinalIgnoreCase));
     }
 }

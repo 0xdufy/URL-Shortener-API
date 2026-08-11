@@ -9,12 +9,13 @@ public class ShortCodeGenerator : IShortCodeGenerator
 
     public string Generate(int length = 6)
     {
-        var bytes = RandomNumberGenerator.GetBytes(length);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(length);
+
         var chars = new char[length];
 
         for (var i = 0; i < length; i++)
         {
-            chars[i] = Charset[bytes[i] % Charset.Length];
+            chars[i] = Charset[RandomNumberGenerator.GetInt32(Charset.Length)];
         }
 
         return new string(chars);
