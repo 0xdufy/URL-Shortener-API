@@ -4,6 +4,7 @@ namespace UrlShortener.Application.Interfaces;
 
 public interface IShortUrlService
 {
+    Task<ShortUrlListResponse> ListAsync(ShortUrlListQuery query, CancellationToken ct);
     Task<ShortUrlResponse> CreateAsync(CreateShortUrlRequest req, string baseHost, string clientIp, CancellationToken ct);
     Task<ShortUrlDetailsResponse?> GetAsync(string shortCode, CancellationToken ct);
     Task<ShortUrlDetailsResponse?> SetStatusAsync(string shortCode, bool isActive, CancellationToken ct);

@@ -1,4 +1,5 @@
 using UrlShortener.Application.Interfaces;
+using UrlShortener.Application.Dtos;
 using UrlShortener.Domain.Entities;
 
 namespace UrlShortener.Infrastructure.Persistence.Repositories;
@@ -9,6 +10,75 @@ public class InMemoryShortUrlRepository : IShortUrlRepository
     private readonly Dictionary<Guid, ShortUrl> _shortUrlsById = new();
     private readonly Dictionary<string, Guid> _shortUrlIdsByCode = new(StringComparer.Ordinal);
     private readonly List<ShortUrlAccessLog> _accessLogs = new();
+
+    public Task<ShortUrlListResult> ListOwnedAsync(ShortUrlListCriteria criteria, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+
+        lock (_sync)
+        {
+            var query = _shortUrlsById.Values
+                .Where(x => x.OwnerId == criteria.OwnerId);
+
+            if (!criteria.IncludeDeleted)
+            {
+                query = query.Where(x => !x.IsDeleted);
+            }
+
+            if (!string.IsNullOrEmpty(criteria.Search))
+            {
+                query = query.Where(x =>
+                    x.ShortCode.Contains(criteria.Search, StringComparison.Ordinal) ||
+                    x.OriginalUrl.Contains(criteria.Search, StringComparison.OrdinalIgnoreCase));
+            }
+
+            if (criteria.IsActive.HasValue)
+            {
+                query = query.Where(x => x.IsActive == criteria.IsActive.Value);
+            }
+
+            query = criteria.Expiration switch
+            {
+                ShortUrlExpirationFilter.Expired => query.Where(x =>
+                    x.ExpiresAtUtc.HasValue && x.ExpiresAtUtc.Value <= criteria.NowUtc),
+                ShortUrlExpirationFilter.NotExpired => query.Where(x =>
+                    !x.ExpiresAtUtc.HasValue || x.ExpiresAtUtc.Value > criteria.NowUtc),
+                _ => query
+            };
+
+            if (criteria.CreatedFromUtc.HasValue)
+            {
+                query = query.Where(x => x.CreatedAtUtc >= criteria.CreatedFromUtc.Value);
+            }
+
+            if (criteria.CreatedToUtc.HasValue)
+            {
+                query = query.Where(x => x.CreatedAtUtc <= criteria.CreatedToUtc.Value);
+            }
+
+            var filtered = query.ToList();
+            var ordered = ApplyOrdering(filtered, criteria.SortBy, criteria.SortDirection);
+            var offset = checked((criteria.Page - 1) * criteria.PageSize);
+            var items = ordered
+                .Skip(offset)
+                .Take(criteria.PageSize)
+                .Select(x => new ShortUrlListItemResponse
+                {
+                    Id = x.Id,
+                    OriginalUrl = x.OriginalUrl,
+                    ShortCode = x.ShortCode,
+                    CreatedAtUtc = x.CreatedAtUtc,
+                    ExpiresAtUtc = x.ExpiresAtUtc,
+                    IsActive = x.IsActive,
+                    IsExpired = x.ExpiresAtUtc.HasValue && x.ExpiresAtUtc.Value <= criteria.NowUtc,
+                    IsDeleted = x.IsDeleted,
+                    ClickCount = x.ClickCount
+                })
+                .ToList();
+
+            return Task.FromResult(new ShortUrlListResult(items, filtered.Count));
+        }
+    }
 
     public Task<ShortUrlCreationResult> TryCreateAsync(ShortUrl entity, CancellationToken ct)
     {
@@ -110,5 +180,30 @@ public class InMemoryShortUrlRepository : IShortUrlRepository
     public Task SaveChangesAsync(CancellationToken ct)
     {
         return Task.CompletedTask;
+    }
+
+    private static IOrderedEnumerable<ShortUrl> ApplyOrdering(
+        IEnumerable<ShortUrl> query,
+        ShortUrlSortField sortBy,
+        SortDirection direction)
+    {
+        if (direction == SortDirection.Ascending)
+        {
+            return sortBy switch
+            {
+                ShortUrlSortField.ShortCode => query.OrderBy(x => x.ShortCode, StringComparer.Ordinal).ThenBy(x => x.Id),
+                ShortUrlSortField.ClickCount => query.OrderBy(x => x.ClickCount).ThenBy(x => x.Id),
+                ShortUrlSortField.ExpiresAt => query.OrderBy(x => x.ExpiresAtUtc).ThenBy(x => x.Id),
+                _ => query.OrderBy(x => x.CreatedAtUtc).ThenBy(x => x.Id)
+            };
+        }
+
+        return sortBy switch
+        {
+            ShortUrlSortField.ShortCode => query.OrderByDescending(x => x.ShortCode, StringComparer.Ordinal).ThenByDescending(x => x.Id),
+            ShortUrlSortField.ClickCount => query.OrderByDescending(x => x.ClickCount).ThenByDescending(x => x.Id),
+            ShortUrlSortField.ExpiresAt => query.OrderByDescending(x => x.ExpiresAtUtc).ThenByDescending(x => x.Id),
+            _ => query.OrderByDescending(x => x.CreatedAtUtc).ThenByDescending(x => x.Id)
+        };
     }
 }

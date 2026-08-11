@@ -55,7 +55,8 @@ public class ShortUrlConfiguration : IEntityTypeConfiguration<ShortUrl>
 
         builder.HasIndex(x => x.IsDeleted);
         builder.HasIndex(x => x.ExpiresAtUtc);
-        builder.HasIndex(x => new { x.OwnerId, x.CreatedAtUtc });
+        builder.HasIndex(x => new { x.OwnerId, x.IsDeleted, x.CreatedAtUtc, x.Id })
+            .HasDatabaseName("IX_ShortUrls_OwnerId_IsDeleted_CreatedAtUtc_Id");
 
         builder.HasOne<ApplicationUser>()
             .WithMany(x => x.ShortUrls)

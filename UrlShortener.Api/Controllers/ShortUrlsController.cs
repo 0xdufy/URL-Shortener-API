@@ -17,19 +17,40 @@ public class ShortUrlsController : ControllerBase
     private readonly IDateTimeProvider _dateTimeProvider;
     private readonly IValidator<CreateShortUrlRequest> _createValidator;
     private readonly IValidator<UpdateStatusRequest> _updateStatusValidator;
+    private readonly IValidator<ShortUrlListQuery> _listValidator;
 
     public ShortUrlsController(
         IShortUrlService shortUrlService,
         IRateLimiter rateLimiter,
         IDateTimeProvider dateTimeProvider,
         IValidator<CreateShortUrlRequest> createValidator,
-        IValidator<UpdateStatusRequest> updateStatusValidator)
+        IValidator<UpdateStatusRequest> updateStatusValidator,
+        IValidator<ShortUrlListQuery> listValidator)
     {
         _shortUrlService = shortUrlService;
         _rateLimiter = rateLimiter;
         _dateTimeProvider = dateTimeProvider;
         _createValidator = createValidator;
         _updateStatusValidator = updateStatusValidator;
+        _listValidator = listValidator;
+    }
+
+    /// <summary>Lists short URLs owned by the authenticated user.</summary>
+    /// <remarks>
+    /// Defaults to page 1 with 20 items and excludes soft-deleted links. PageSize is capped at 100.
+    /// Expiration accepts all, expired, or notExpired. SortBy accepts createdAt, shortCode,
+    /// clickCount, or expiresAt; sortDirection accepts asc or desc.
+    /// </remarks>
+    [HttpGet]
+    [ProducesResponseType(typeof(ShortUrlListResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<ShortUrlListResponse>> List([FromQuery] ShortUrlListQuery query, CancellationToken ct)
+    {
+        EnsureValidModel(query);
+        await _listValidator.ValidateAndThrowAsync(query, ct);
+
+        return Ok(await _shortUrlService.ListAsync(query, ct));
     }
 
     [HttpPost]
@@ -119,6 +140,21 @@ public class ShortUrlsController : ControllerBase
 
     private T EnsureValidModelAndBody<T>(T? request) where T : class
     {
+        EnsureValidModel(request);
+
+        if (request == null)
+        {
+            throw new ValidationException(new[]
+            {
+                new FluentValidation.Results.ValidationFailure("request", "Request body is required.")
+            });
+        }
+
+        return request;
+    }
+
+    private void EnsureValidModel(object? request)
+    {
         if (!ModelState.IsValid)
         {
             var failures = ModelState
@@ -131,16 +167,6 @@ public class ShortUrlsController : ControllerBase
 
             throw new ValidationException(failures);
         }
-
-        if (request == null)
-        {
-            throw new ValidationException(new[]
-            {
-                new FluentValidation.Results.ValidationFailure("request", "Request body is required.")
-            });
-        }
-
-        return request;
     }
 
     private ErrorResponse CreateError(string code, string message, List<ErrorDetail> details)

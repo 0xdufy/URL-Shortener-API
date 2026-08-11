@@ -42,6 +42,7 @@ $env:Storage__UseInMemory = "false"
 See [Authentication and Session API](docs/authentication.md) for endpoint contracts, refresh-cookie/CSRF handling, expiration, revocation, and all identity configuration.
 See [Authorization Boundaries](docs/authorization.md) for protected URL-management routes and owner-scoped access semantics.
 See [URL Creation Contract](docs/url-creation.md) for validation, UTC expiry, entropy, and concurrency-safe uniqueness behavior.
+See [Owned URL Query API](docs/owned-url-query.md) for dashboard listing, search, filters, sorting, deletion visibility, and pagination.
 
 ### 3) Database setup
 Restore the repository-pinned EF CLI:
@@ -87,7 +88,17 @@ Example: if you call `POST` on `https://localhost:7221`, the API returns `shortU
 
 Access tokens are returned in JSON and expire after 10 minutes by default. Raw refresh tokens are never returned in response bodies or stored in plaintext.
 
-### 1) POST `/api/v1/short-urls`
+### 1) GET `/api/v1/short-urls`
+Lists only the authenticated user's short URLs. It supports bounded pagination, search, active/expiration/created-date filters, optional deleted-row inclusion, and deterministic sorting. The default page is 1 with 20 items; the maximum page size is 100.
+
+```bash
+curl "https://localhost:7221/api/v1/short-urls?page=1&pageSize=20&expiration=notExpired&sortBy=createdAt&sortDirection=desc" \
+  -H "Authorization: Bearer $accessToken"
+```
+
+See [Owned URL Query API](docs/owned-url-query.md) for the complete request and response contract.
+
+### 2) POST `/api/v1/short-urls`
 Creates a short URL. This and every `/api/v1/short-urls` management endpoint require the authenticated owner's bearer access token; missing or invalid tokens return `401 AUTHENTICATION_REQUIRED`.
 
 Request with only `originalUrl`:
@@ -132,7 +143,7 @@ Status codes:
 
 Generated codes are eight case-sensitive base-62 characters. `originalUrl` is limited to 2,048 characters, and a supplied `expiresAtUtc` must be a future UTC timestamp ending in `Z`.
 
-### 2) GET `/r/{shortCode}`
+### 3) GET `/r/{shortCode}`
 Redirects to the original URL.
 
 Test redirect headers/status:
@@ -146,7 +157,7 @@ Status codes:
 - `404 Not Found`: short code does not exist, deleted, or inactive
 - `410 Gone`: short URL exists but is expired
 
-### 3) GET `/api/v1/short-urls/{shortCode}`
+### 4) GET `/api/v1/short-urls/{shortCode}`
 Returns short URL details.
 
 ```bash
@@ -174,7 +185,7 @@ Status codes:
 - `200 OK`
 - `404 Not Found`
 
-### 4) PATCH `/api/v1/short-urls/{shortCode}/status`
+### 5) PATCH `/api/v1/short-urls/{shortCode}/status`
 Updates active/inactive state.
 
 ```bash
@@ -204,7 +215,7 @@ Status codes:
 - `200 OK`
 - `404 Not Found`
 
-### 5) DELETE `/api/v1/short-urls/{shortCode}`
+### 6) DELETE `/api/v1/short-urls/{shortCode}`
 Soft deletes a short URL.
 
 ```bash
@@ -216,7 +227,7 @@ Status codes:
 - `204 No Content`: deleted
 - `404 Not Found`
 
-### 6) GET `/api/v1/short-urls/{shortCode}/stats?fromUtc=&toUtc=`
+### 7) GET `/api/v1/short-urls/{shortCode}/stats?fromUtc=&toUtc=`
 Returns click stats.
 
 Without query params (defaults to last 30 days):

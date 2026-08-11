@@ -30,6 +30,41 @@ public class ShortUrlService : IShortUrlService
         _currentUserContext = currentUserContext;
     }
 
+    public async Task<ShortUrlListResponse> ListAsync(ShortUrlListQuery query, CancellationToken ct)
+    {
+        var criteria = new ShortUrlListCriteria(
+            RequireCurrentUserId(),
+            query.Page,
+            query.PageSize,
+            query.Search?.Trim(),
+            query.IsActive,
+            ParseExpiration(query.Expiration),
+            query.IncludeDeleted,
+            query.CreatedFromUtc?.UtcDateTime,
+            query.CreatedToUtc?.UtcDateTime,
+            ParseSortField(query.SortBy),
+            query.SortDirection.Equals("asc", StringComparison.OrdinalIgnoreCase)
+                ? SortDirection.Ascending
+                : SortDirection.Descending,
+            _dateTimeProvider.UtcNow);
+
+        var result = await _repository.ListOwnedAsync(criteria, ct);
+        var totalPages = result.TotalItems == 0
+            ? 0
+            : (int)Math.Ceiling(result.TotalItems / (double)query.PageSize);
+
+        return new ShortUrlListResponse
+        {
+            Items = result.Items,
+            Page = query.Page,
+            PageSize = query.PageSize,
+            TotalItems = result.TotalItems,
+            TotalPages = totalPages,
+            HasPreviousPage = query.Page > 1,
+            HasNextPage = query.Page < totalPages
+        };
+    }
+
     public async Task<ShortUrlResponse> CreateAsync(CreateShortUrlRequest req, string baseHost, string clientIp, CancellationToken ct)
     {
         var ownerId = RequireCurrentUserId();
@@ -278,6 +313,23 @@ public class ShortUrlService : IShortUrlService
 
         return userId.Value;
     }
+
+    private static ShortUrlExpirationFilter ParseExpiration(string value) =>
+        value.ToLowerInvariant() switch
+        {
+            "expired" => ShortUrlExpirationFilter.Expired,
+            "notexpired" => ShortUrlExpirationFilter.NotExpired,
+            _ => ShortUrlExpirationFilter.All
+        };
+
+    private static ShortUrlSortField ParseSortField(string value) =>
+        value.ToLowerInvariant() switch
+        {
+            "shortcode" => ShortUrlSortField.ShortCode,
+            "clickcount" => ShortUrlSortField.ClickCount,
+            "expiresat" => ShortUrlSortField.ExpiresAt,
+            _ => ShortUrlSortField.CreatedAt
+        };
 
     private static TimeSpan CalculateTtl(DateTime? expiresAtUtc, DateTime nowUtc)
     {

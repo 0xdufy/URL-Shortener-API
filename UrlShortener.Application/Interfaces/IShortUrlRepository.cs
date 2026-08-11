@@ -4,6 +4,7 @@ namespace UrlShortener.Application.Interfaces;
 
 public interface IShortUrlRepository
 {
+    Task<ShortUrlListResult> ListOwnedAsync(ShortUrlListCriteria criteria, CancellationToken ct);
     Task<ShortUrlCreationResult> TryCreateAsync(ShortUrl entity, CancellationToken ct);
     Task<ShortUrl?> GetOwnedByShortCodeNotDeletedAsync(string shortCode, Guid ownerId, CancellationToken ct);
     Task<ShortUrl?> GetByShortCodeAnyAsync(string shortCode, CancellationToken ct);

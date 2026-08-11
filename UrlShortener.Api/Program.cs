@@ -21,6 +21,7 @@ builder.Services.AddSwaggerGen(options =>
         Description = "Enter the JWT access token returned by the authentication endpoints."
     });
     options.OperationFilter<AuthorizeOperationFilter>();
+    options.OperationFilter<OwnedShortUrlListOperationFilter>();
 });
 
 var app = builder.Build();
