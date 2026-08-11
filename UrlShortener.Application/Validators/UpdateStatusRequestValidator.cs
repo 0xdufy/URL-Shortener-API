@@ -8,6 +8,7 @@ public class UpdateStatusRequestValidator : AbstractValidator<UpdateStatusReques
     public UpdateStatusRequestValidator()
     {
         RuleFor(x => x.IsActive)
-            .Must(x => x == true || x == false);
+            .NotNull()
+            .WithMessage("IsActive is required.");
     }
 }

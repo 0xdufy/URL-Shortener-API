@@ -16,6 +16,7 @@ public class ShortUrlsController : ControllerBase
     private readonly IRateLimiter _rateLimiter;
     private readonly IDateTimeProvider _dateTimeProvider;
     private readonly IValidator<CreateShortUrlRequest> _createValidator;
+    private readonly IValidator<UpdateShortUrlRequest> _updateValidator;
     private readonly IValidator<UpdateStatusRequest> _updateStatusValidator;
     private readonly IValidator<ShortUrlListQuery> _listValidator;
 
@@ -24,6 +25,7 @@ public class ShortUrlsController : ControllerBase
         IRateLimiter rateLimiter,
         IDateTimeProvider dateTimeProvider,
         IValidator<CreateShortUrlRequest> createValidator,
+        IValidator<UpdateShortUrlRequest> updateValidator,
         IValidator<UpdateStatusRequest> updateStatusValidator,
         IValidator<ShortUrlListQuery> listValidator)
     {
@@ -31,6 +33,7 @@ public class ShortUrlsController : ControllerBase
         _rateLimiter = rateLimiter;
         _dateTimeProvider = dateTimeProvider;
         _createValidator = createValidator;
+        _updateValidator = updateValidator;
         _updateStatusValidator = updateStatusValidator;
         _listValidator = listValidator;
     }
@@ -82,6 +85,9 @@ public class ShortUrlsController : ControllerBase
     }
 
     [HttpGet("{shortCode}")]
+    [ProducesResponseType(typeof(ShortUrlDetailsResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetByShortCode([FromRoute] string shortCode, CancellationToken ct)
     {
         var response = await _shortUrlService.GetAsync(shortCode, ct);
@@ -93,14 +99,42 @@ public class ShortUrlsController : ControllerBase
         return Ok(response);
     }
 
+    [HttpPut("{shortCode}")]
+    [Consumes("application/json")]
+    [ProducesResponseType(typeof(ShortUrlDetailsResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Update(
+        [FromRoute] string shortCode,
+        [FromBody] UpdateShortUrlRequest? request,
+        CancellationToken ct)
+    {
+        var validRequest = EnsureValidModelAndBody(request);
+        await _updateValidator.ValidateAndThrowAsync(validRequest, ct);
+
+        var response = await _shortUrlService.UpdateAsync(shortCode, validRequest, ct);
+        if (response == null)
+        {
+            return NotFound(CreateError("NOT_FOUND", "Short URL not found.", new List<ErrorDetail>()));
+        }
+
+        return Ok(response);
+    }
+
     [HttpPatch("{shortCode}/status")]
+    [Consumes("application/json")]
+    [ProducesResponseType(typeof(ShortUrlDetailsResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
     public async Task<IActionResult> UpdateStatus([FromRoute] string shortCode, [FromBody] UpdateStatusRequest? request, CancellationToken ct)
     {
         var validRequest = EnsureValidModelAndBody(request);
 
         await _updateStatusValidator.ValidateAndThrowAsync(validRequest, ct);
 
-        var response = await _shortUrlService.SetStatusAsync(shortCode, validRequest.IsActive, ct);
+        var response = await _shortUrlService.SetStatusAsync(shortCode, validRequest.IsActive.GetValueOrDefault(), ct);
         if (response == null)
         {
             return NotFound(CreateError("NOT_FOUND", "Short URL not found.", new List<ErrorDetail>()));
@@ -110,6 +144,9 @@ public class ShortUrlsController : ControllerBase
     }
 
     [HttpDelete("{shortCode}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Delete([FromRoute] string shortCode, CancellationToken ct)
     {
         var deleted = await _shortUrlService.DeleteAsync(shortCode, ct);
@@ -121,7 +158,21 @@ public class ShortUrlsController : ControllerBase
         return NoContent();
     }
 
+    [HttpPost("{shortCode}/restore")]
+    [ProducesResponseType(typeof(ShortUrlDetailsResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status410Gone)]
+    public async Task<IActionResult> Restore([FromRoute] string shortCode, CancellationToken ct)
+    {
+        return Ok(await _shortUrlService.RestoreAsync(shortCode, ct));
+    }
+
     [HttpGet("{shortCode}/stats")]
+    [ProducesResponseType(typeof(StatsResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetStats([FromRoute] string shortCode, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, CancellationToken ct)
     {
         var response = await _shortUrlService.GetStatsAsync(shortCode, fromUtc, toUtc, ct);

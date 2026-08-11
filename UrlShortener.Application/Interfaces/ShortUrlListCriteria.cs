@@ -35,7 +35,8 @@ public sealed record ShortUrlListCriteria(
     DateTime? CreatedToUtc,
     ShortUrlSortField SortBy,
     SortDirection SortDirection,
-    DateTime NowUtc);
+    DateTime NowUtc,
+    int RestoreRetentionDays);
 
 public sealed record ShortUrlListResult(
     IReadOnlyList<ShortUrlListItemResponse> Items,

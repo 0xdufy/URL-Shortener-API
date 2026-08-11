@@ -1,7 +1,7 @@
 # URL Shortener API
 
 ## Overview
-URL Shortener API is a .NET 10 ASP.NET Core Web API for creating short URLs, redirecting with short codes, tracking clicks, viewing stats, toggling active status, and soft deleting links.
+URL Shortener API is a .NET 10 ASP.NET Core Web API for creating and managing owned short URLs, redirecting with short codes, tracking clicks, viewing stats, and handling deactivate/delete/restore lifecycle operations.
 
 ## Local Setup
 
@@ -43,6 +43,7 @@ See [Authentication and Session API](docs/authentication.md) for endpoint contra
 See [Authorization Boundaries](docs/authorization.md) for protected URL-management routes and owner-scoped access semantics.
 See [URL Creation Contract](docs/url-creation.md) for validation, UTC expiry, entropy, and concurrency-safe uniqueness behavior.
 See [Owned URL Query API](docs/owned-url-query.md) for dashboard listing, search, filters, sorting, deletion visibility, and pagination.
+See [Owned URL Mutation Lifecycle](docs/url-lifecycle.md) for update/status/delete/restore contracts. The restore window is configured with `ShortUrlLifecycle:SoftDeleteRetentionDays` and defaults to 30 days.
 
 ### 3) Database setup
 Restore the repository-pinned EF CLI:
@@ -213,9 +214,25 @@ Sample response (`200 OK`):
 
 Status codes:
 - `200 OK`
+- `400 Bad Request`: missing body or omitted/non-Boolean `isActive`
 - `404 Not Found`
 
-### 6) DELETE `/api/v1/short-urls/{shortCode}`
+### 6) PUT `/api/v1/short-urls/{shortCode}`
+Replaces the mutable destination and expiry fields. Omitting or setting `expiresAtUtc` to `null` clears expiry. The alias and ownership are immutable.
+
+```bash
+curl -X PUT "https://localhost:7221/api/v1/short-urls/myAlias_01" \
+  -H "Authorization: Bearer $accessToken" \
+  -H "Content-Type: application/json" \
+  -d "{\"originalUrl\":\"https://example.com/new-destination\",\"expiresAtUtc\":null}"
+```
+
+Status codes:
+- `200 OK`: updated details
+- `400 Bad Request`: invalid destination/expiry or missing body
+- `404 Not Found`
+
+### 7) DELETE `/api/v1/short-urls/{shortCode}`
 Soft deletes a short URL.
 
 ```bash
@@ -227,7 +244,23 @@ Status codes:
 - `204 No Content`: deleted
 - `404 Not Found`
 
-### 7) GET `/api/v1/short-urls/{shortCode}/stats?fromUtc=&toUtc=`
+### 8) POST `/api/v1/short-urls/{shortCode}/restore`
+Restores a soft-deleted owned URL before its retention boundary (30 days by default).
+
+```bash
+curl -X POST "https://localhost:7221/api/v1/short-urls/myAlias_01/restore" \
+  -H "Authorization: Bearer $accessToken"
+```
+
+Status codes:
+- `200 OK`: restored details
+- `404 Not Found`
+- `409 Conflict`: link is not deleted (`RESTORE_NOT_DELETED`)
+- `410 Gone`: restore window expired (`RESTORE_WINDOW_EXPIRED`)
+
+See [Owned URL Mutation Lifecycle](docs/url-lifecycle.md) for alias immutability, retention, cache invalidation, and concurrency semantics.
+
+### 9) GET `/api/v1/short-urls/{shortCode}/stats?fromUtc=&toUtc=`
 Returns click stats.
 
 Without query params (defaults to last 30 days):

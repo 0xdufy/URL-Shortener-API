@@ -22,6 +22,7 @@ builder.Services.AddSwaggerGen(options =>
     });
     options.OperationFilter<AuthorizeOperationFilter>();
     options.OperationFilter<OwnedShortUrlListOperationFilter>();
+    options.OperationFilter<ShortUrlLifecycleOperationFilter>();
 });
 
 var app = builder.Build();

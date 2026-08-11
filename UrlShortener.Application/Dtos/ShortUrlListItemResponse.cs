@@ -10,5 +10,7 @@ public sealed class ShortUrlListItemResponse
     public bool IsActive { get; set; }
     public bool IsExpired { get; set; }
     public bool IsDeleted { get; set; }
+    public DateTime? DeletedAtUtc { get; set; }
+    public DateTime? RestoreUntilUtc { get; set; }
     public long ClickCount { get; set; }
 }

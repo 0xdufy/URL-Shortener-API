@@ -72,6 +72,18 @@ public class ExceptionHandlingMiddleware
             code = "EXPIRED";
             message = "Short URL has expired.";
         }
+        else if (exception is RestoreNotDeletedException)
+        {
+            statusCode = StatusCodes.Status409Conflict;
+            code = "RESTORE_NOT_DELETED";
+            message = "Short URL is not deleted.";
+        }
+        else if (exception is RestoreWindowExpiredException)
+        {
+            statusCode = StatusCodes.Status410Gone;
+            code = "RESTORE_WINDOW_EXPIRED";
+            message = "The short URL restore window has expired.";
+        }
         else if (exception is RateLimitedException rateLimitedException)
         {
             statusCode = StatusCodes.Status429TooManyRequests;

@@ -72,6 +72,8 @@ public class InMemoryShortUrlRepository : IShortUrlRepository
                     IsActive = x.IsActive,
                     IsExpired = x.ExpiresAtUtc.HasValue && x.ExpiresAtUtc.Value <= criteria.NowUtc,
                     IsDeleted = x.IsDeleted,
+                    DeletedAtUtc = x.DeletedAtUtc,
+                    RestoreUntilUtc = x.DeletedAtUtc?.AddDays(criteria.RestoreRetentionDays),
                     ClickCount = x.ClickCount
                 })
                 .ToList();
@@ -99,6 +101,8 @@ public class InMemoryShortUrlRepository : IShortUrlRepository
 
     public Task<ShortUrl?> GetOwnedByShortCodeNotDeletedAsync(string shortCode, Guid ownerId, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
+
         lock (_sync)
         {
             if (_shortUrlIdsByCode.TryGetValue(shortCode, out var id) &&
@@ -113,8 +117,27 @@ public class InMemoryShortUrlRepository : IShortUrlRepository
         }
     }
 
+    public Task<ShortUrl?> GetOwnedByShortCodeAsync(string shortCode, Guid ownerId, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+
+        lock (_sync)
+        {
+            if (_shortUrlIdsByCode.TryGetValue(shortCode, out var id) &&
+                _shortUrlsById.TryGetValue(id, out var entity) &&
+                entity.OwnerId == ownerId)
+            {
+                return Task.FromResult<ShortUrl?>(entity);
+            }
+
+            return Task.FromResult<ShortUrl?>(null);
+        }
+    }
+
     public Task<ShortUrl?> GetByShortCodeAnyAsync(string shortCode, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
+
         lock (_sync)
         {
             if (_shortUrlIdsByCode.TryGetValue(shortCode, out var id) &&

@@ -76,6 +76,10 @@ public class ShortUrlRepository : IShortUrlRepository
                 IsActive = x.IsActive,
                 IsExpired = x.ExpiresAtUtc.HasValue && x.ExpiresAtUtc.Value <= criteria.NowUtc,
                 IsDeleted = x.IsDeleted,
+                DeletedAtUtc = x.DeletedAtUtc,
+                RestoreUntilUtc = x.DeletedAtUtc.HasValue
+                    ? x.DeletedAtUtc.Value.AddDays(criteria.RestoreRetentionDays)
+                    : null,
                 ClickCount = x.ClickCount
             })
             .ToListAsync(ct);
@@ -106,6 +110,15 @@ public class ShortUrlRepository : IShortUrlRepository
                 x => EF.Functions.Collate(x.ShortCode, CaseSensitiveCollation) == shortCode &&
                     x.OwnerId == ownerId &&
                     !x.IsDeleted,
+                ct);
+    }
+
+    public Task<ShortUrl?> GetOwnedByShortCodeAsync(string shortCode, Guid ownerId, CancellationToken ct)
+    {
+        return _dbContext.ShortUrls
+            .FirstOrDefaultAsync(
+                x => EF.Functions.Collate(x.ShortCode, CaseSensitiveCollation) == shortCode &&
+                    x.OwnerId == ownerId,
                 ct);
     }
 

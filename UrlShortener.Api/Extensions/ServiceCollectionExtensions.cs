@@ -39,6 +39,7 @@ public static class ServiceCollectionExtensions
         var rateLimitingSection = configuration.GetRequiredSection(RateLimitingOptions.SectionName);
         var identitySection = configuration.GetRequiredSection(IdentitySecurityOptions.SectionName);
         var authenticationRateLimitingSection = configuration.GetRequiredSection(AuthenticationRateLimitingOptions.SectionName);
+        var shortUrlLifecycleSection = configuration.GetRequiredSection(ShortUrlLifecycleOptions.SectionName);
 
         var storageOptions = storageSection.Get<StorageOptions>()
             ?? throw new InvalidOperationException($"Configuration section '{StorageOptions.SectionName}' is invalid.");
@@ -92,6 +93,15 @@ public static class ServiceCollectionExtensions
             .Validate(options => options.RegistrationPerMinuteLimit is >= 1 and <= 10_000, "AuthenticationRateLimiting:RegistrationPerMinuteLimit must be between 1 and 10000.")
             .Validate(options => options.SignInPerMinuteLimit is >= 1 and <= 10_000, "AuthenticationRateLimiting:SignInPerMinuteLimit must be between 1 and 10000.")
             .Validate(options => options.RefreshPerMinuteLimit is >= 1 and <= 10_000, "AuthenticationRateLimiting:RefreshPerMinuteLimit must be between 1 and 10000.")
+            .ValidateOnStart();
+
+        var shortUrlLifecycleOptions = shortUrlLifecycleSection.Get<ShortUrlLifecycleOptions>()
+            ?? throw new InvalidOperationException($"Configuration section '{ShortUrlLifecycleOptions.SectionName}' is invalid.");
+        services.AddOptions<ShortUrlLifecycleOptions>()
+            .Bind(shortUrlLifecycleSection)
+            .Validate(
+                options => options.SoftDeleteRetentionDays is >= 1 and <= 3650,
+                "ShortUrlLifecycle:SoftDeleteRetentionDays must be between 1 and 3650.")
             .ValidateOnStart();
 
         var identityOptions = identitySection.Get<IdentitySecurityOptions>()
@@ -237,6 +247,7 @@ public static class ServiceCollectionExtensions
         services.AddValidatorsFromAssemblyContaining<CreateShortUrlRequestValidator>();
 
         services.AddScoped<IShortUrlService, ShortUrlService>();
+        services.AddSingleton(new ShortUrlLifecycleSettings(shortUrlLifecycleOptions.SoftDeleteRetentionDays));
         services.AddScoped<ICurrentUserContext, HttpCurrentUserContext>();
         if (storageOptions.UseInMemory)
         {
