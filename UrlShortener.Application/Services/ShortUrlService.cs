@@ -16,6 +16,7 @@ public class ShortUrlService : IShortUrlService
     private readonly IDateTimeProvider _dateTimeProvider;
     private readonly ICurrentUserContext _currentUserContext;
     private readonly ShortUrlLifecycleSettings _lifecycleSettings;
+    private readonly ShortUrlContractSettings _contractSettings;
 
     public ShortUrlService(
         IShortUrlRepository repository,
@@ -23,7 +24,8 @@ public class ShortUrlService : IShortUrlService
         IShortUrlCache shortUrlCache,
         IDateTimeProvider dateTimeProvider,
         ICurrentUserContext currentUserContext,
-        ShortUrlLifecycleSettings lifecycleSettings)
+        ShortUrlLifecycleSettings lifecycleSettings,
+        ShortUrlContractSettings contractSettings)
     {
         _repository = repository;
         _shortCodeGenerator = shortCodeGenerator;
@@ -31,6 +33,7 @@ public class ShortUrlService : IShortUrlService
         _dateTimeProvider = dateTimeProvider;
         _currentUserContext = currentUserContext;
         _lifecycleSettings = lifecycleSettings;
+        _contractSettings = contractSettings;
     }
 
     public async Task<ShortUrlListResponse> ListAsync(ShortUrlListQuery query, CancellationToken ct)
@@ -53,6 +56,12 @@ public class ShortUrlService : IShortUrlService
             _lifecycleSettings.RestoreRetentionDays);
 
         var result = await _repository.ListOwnedAsync(criteria, ct);
+        foreach (var item in result.Items)
+        {
+            item.ShortUrl = BuildPublicShortUrl(item.ShortCode);
+            NormalizeResponseTimestamps(item);
+        }
+
         var totalPages = result.TotalItems == 0
             ? 0
             : (int)Math.Ceiling(result.TotalItems / (double)query.PageSize);
@@ -60,16 +69,30 @@ public class ShortUrlService : IShortUrlService
         return new ShortUrlListResponse
         {
             Items = result.Items,
-            Page = query.Page,
-            PageSize = query.PageSize,
-            TotalItems = result.TotalItems,
-            TotalPages = totalPages,
-            HasPreviousPage = query.Page > 1,
-            HasNextPage = query.Page < totalPages
+            Pagination = new PaginationMetadata
+            {
+                Page = query.Page,
+                PageSize = query.PageSize,
+                TotalItems = result.TotalItems,
+                TotalPages = totalPages,
+                HasPreviousPage = query.Page > 1,
+                HasNextPage = query.Page < totalPages
+            },
+            Filters = new ShortUrlFilterMetadata
+            {
+                Search = query.Search?.Trim(),
+                IsActive = query.IsActive,
+                Expiration = NormalizeExpiration(query.Expiration),
+                IncludeDeleted = query.IncludeDeleted,
+                CreatedFromUtc = query.CreatedFromUtc?.UtcDateTime,
+                CreatedToUtc = query.CreatedToUtc?.UtcDateTime,
+                SortBy = NormalizeSortField(query.SortBy),
+                SortDirection = query.SortDirection.ToLowerInvariant()
+            }
         };
     }
 
-    public async Task<ShortUrlResponse> CreateAsync(CreateShortUrlRequest req, string baseHost, string clientIp, CancellationToken ct)
+    public async Task<ShortUrlResponse> CreateAsync(CreateShortUrlRequest req, string clientIp, CancellationToken ct)
     {
         var ownerId = RequireCurrentUserId();
         var nowUtc = _dateTimeProvider.UtcNow;
@@ -118,7 +141,6 @@ public class ShortUrlService : IShortUrlService
         await _shortUrlCache.SetAsync(entity.ShortCode, cacheModel, CalculateTtl(entity.ExpiresAtUtc, nowUtc), ct);
 
         var response = ToShortUrlResponse(entity);
-        response.ShortUrl = $"{baseHost}/r/{entity.ShortCode}";
 
         return response;
     }
@@ -142,7 +164,7 @@ public class ShortUrlService : IShortUrlService
         };
     }
 
-    public async Task<ShortUrlDetailsResponse?> GetAsync(string shortCode, CancellationToken ct)
+    public async Task<ShortUrlResponse?> GetAsync(string shortCode, CancellationToken ct)
     {
         var ownerId = RequireCurrentUserId();
         var entity = await _repository.GetOwnedByShortCodeNotDeletedAsync(shortCode, ownerId, ct);
@@ -151,10 +173,10 @@ public class ShortUrlService : IShortUrlService
             return null;
         }
 
-        return ToShortUrlDetailsResponse(entity);
+        return ToShortUrlResponse(entity);
     }
 
-    public async Task<ShortUrlDetailsResponse?> UpdateAsync(
+    public async Task<ShortUrlResponse?> UpdateAsync(
         string shortCode,
         UpdateShortUrlRequest request,
         CancellationToken ct)
@@ -172,10 +194,10 @@ public class ShortUrlService : IShortUrlService
         await _repository.SaveChangesAsync(ct);
         await _shortUrlCache.RemoveAsync(shortCode, ct);
 
-        return ToShortUrlDetailsResponse(entity);
+        return ToShortUrlResponse(entity);
     }
 
-    public async Task<ShortUrlDetailsResponse?> SetStatusAsync(string shortCode, bool isActive, CancellationToken ct)
+    public async Task<ShortUrlResponse?> SetStatusAsync(string shortCode, bool isActive, CancellationToken ct)
     {
         var ownerId = RequireCurrentUserId();
         var entity = await _repository.GetOwnedByShortCodeNotDeletedAsync(shortCode, ownerId, ct);
@@ -189,7 +211,7 @@ public class ShortUrlService : IShortUrlService
         await _repository.SaveChangesAsync(ct);
         await _shortUrlCache.RemoveAsync(shortCode, ct);
 
-        return ToShortUrlDetailsResponse(entity);
+        return ToShortUrlResponse(entity);
     }
 
     public async Task<bool> DeleteAsync(string shortCode, CancellationToken ct)
@@ -210,7 +232,7 @@ public class ShortUrlService : IShortUrlService
         return true;
     }
 
-    public async Task<ShortUrlDetailsResponse> RestoreAsync(string shortCode, CancellationToken ct)
+    public async Task<ShortUrlResponse> RestoreAsync(string shortCode, CancellationToken ct)
     {
         var ownerId = RequireCurrentUserId();
         var entity = await _repository.GetOwnedByShortCodeAsync(shortCode, ownerId, ct);
@@ -236,7 +258,7 @@ public class ShortUrlService : IShortUrlService
         await _repository.SaveChangesAsync(ct);
         await _shortUrlCache.RemoveAsync(shortCode, ct);
 
-        return ToShortUrlDetailsResponse(entity);
+        return ToShortUrlResponse(entity);
     }
 
     public async Task<StatsResponse?> GetStatsAsync(string shortCode, DateTime? fromUtc, DateTime? toUtc, CancellationToken ct)
@@ -376,6 +398,14 @@ public class ShortUrlService : IShortUrlService
             _ => ShortUrlExpirationFilter.All
         };
 
+    private static string NormalizeExpiration(string value) =>
+        value.ToLowerInvariant() switch
+        {
+            "expired" => "expired",
+            "notexpired" => "notExpired",
+            _ => "all"
+        };
+
     private static ShortUrlSortField ParseSortField(string value) =>
         value.ToLowerInvariant() switch
         {
@@ -383,6 +413,15 @@ public class ShortUrlService : IShortUrlService
             "clickcount" => ShortUrlSortField.ClickCount,
             "expiresat" => ShortUrlSortField.ExpiresAt,
             _ => ShortUrlSortField.CreatedAt
+        };
+
+    private static string NormalizeSortField(string value) =>
+        value.ToLowerInvariant() switch
+        {
+            "shortcode" => "shortCode",
+            "clickcount" => "clickCount",
+            "expiresat" => "expiresAt",
+            _ => "createdAt"
         };
 
     private static TimeSpan CalculateTtl(DateTime? expiresAtUtc, DateTime nowUtc)
@@ -401,35 +440,41 @@ public class ShortUrlService : IShortUrlService
         return TimeSpan.FromHours(24);
     }
 
-    private static ShortUrlResponse ToShortUrlResponse(ShortUrl entity)
+    private ShortUrlResponse ToShortUrlResponse(ShortUrl entity)
     {
+        var nowUtc = _dateTimeProvider.UtcNow;
         return new ShortUrlResponse
         {
             Id = entity.Id,
             OriginalUrl = entity.OriginalUrl,
             ShortCode = entity.ShortCode,
-            CreatedAtUtc = entity.CreatedAtUtc,
-            ExpiresAtUtc = entity.ExpiresAtUtc,
+            ShortUrl = BuildPublicShortUrl(entity.ShortCode),
+            CreatedAtUtc = AsUtc(entity.CreatedAtUtc),
+            ExpiresAtUtc = AsUtc(entity.ExpiresAtUtc),
             IsActive = entity.IsActive,
-            ClickCount = entity.ClickCount
+            IsExpired = entity.ExpiresAtUtc.HasValue && entity.ExpiresAtUtc.Value <= nowUtc,
+            IsDeleted = entity.IsDeleted,
+            DeletedAtUtc = AsUtc(entity.DeletedAtUtc),
+            RestoreUntilUtc = AsUtc(entity.DeletedAtUtc?.AddDays(_lifecycleSettings.RestoreRetentionDays)),
+            ClickCount = entity.ClickCount,
+            LastAccessedAtUtc = AsUtc(entity.LastAccessedAtUtc)
         };
     }
 
-    private ShortUrlDetailsResponse ToShortUrlDetailsResponse(ShortUrl entity)
+    private string BuildPublicShortUrl(string shortCode) =>
+        $"{_contractSettings.PublicBaseUrl}/r/{Uri.EscapeDataString(shortCode)}";
+
+    private static DateTime AsUtc(DateTime value) =>
+        value.Kind == DateTimeKind.Utc ? value : DateTime.SpecifyKind(value, DateTimeKind.Utc);
+
+    private static DateTime? AsUtc(DateTime? value) =>
+        value.HasValue ? AsUtc(value.Value) : null;
+
+    private static void NormalizeResponseTimestamps(ShortUrlListItemResponse item)
     {
-        return new ShortUrlDetailsResponse
-        {
-            Id = entity.Id,
-            OriginalUrl = entity.OriginalUrl,
-            ShortCode = entity.ShortCode,
-            CreatedAtUtc = entity.CreatedAtUtc,
-            ExpiresAtUtc = entity.ExpiresAtUtc,
-            IsActive = entity.IsActive,
-            IsDeleted = entity.IsDeleted,
-            DeletedAtUtc = entity.DeletedAtUtc,
-            RestoreUntilUtc = entity.DeletedAtUtc?.AddDays(_lifecycleSettings.RestoreRetentionDays),
-            ClickCount = entity.ClickCount,
-            LastAccessedAtUtc = entity.LastAccessedAtUtc
-        };
+        item.CreatedAtUtc = AsUtc(item.CreatedAtUtc);
+        item.ExpiresAtUtc = AsUtc(item.ExpiresAtUtc);
+        item.DeletedAtUtc = AsUtc(item.DeletedAtUtc);
+        item.RestoreUntilUtc = AsUtc(item.RestoreUntilUtc);
     }
 }

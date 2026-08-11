@@ -44,6 +44,7 @@ Use exactly one of:
 
 - `authentication.md` describes account and session behavior.
 - `authorization.md` defines protected management routes, owner-scoped access, and the 401/403/404 concealment policy.
+- `management-api.md` is the finalized Angular-facing management resource, pagination/filter, error, UTC timestamp, and public URL contract.
 - `persistence.md` describes storage configuration and migration operations.
 - `resource-ownership.md` defines immutable ownership, legacy short-link treatment, and rules for future owned resources.
 

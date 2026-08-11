@@ -1,6 +1,7 @@
 using UrlShortener.Api.Extensions;
 using UrlShortener.Api.Middlewares;
 using UrlShortener.Api.OpenApi;
+using UrlShortener.Api.Models;
 using Microsoft.OpenApi;
 using Serilog;
 
@@ -29,6 +30,21 @@ var app = builder.Build();
 
 app.UseSerilogRequestLogging();
 app.UseMiddleware<ExceptionHandlingMiddleware>();
+app.UseStatusCodePages(async statusCodeContext =>
+{
+    var response = statusCodeContext.HttpContext.Response;
+    var (code, message) = response.StatusCode switch
+    {
+        StatusCodes.Status400BadRequest => ("BAD_REQUEST", "The request is invalid."),
+        StatusCodes.Status404NotFound => ("NOT_FOUND", "Resource not found."),
+        StatusCodes.Status405MethodNotAllowed => ("METHOD_NOT_ALLOWED", "The HTTP method is not allowed for this resource."),
+        StatusCodes.Status415UnsupportedMediaType => ("UNSUPPORTED_MEDIA_TYPE", "The request media type is not supported."),
+        _ => ("HTTP_ERROR", "The request could not be completed.")
+    };
+
+    response.ContentType = "application/json";
+    await response.WriteAsJsonAsync(ApiErrorFactory.Create(statusCodeContext.HttpContext, code, message));
+});
 app.UseCors("TrustedWebClient");
 app.UseAuthentication();
 app.UseAuthorization();

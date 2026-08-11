@@ -44,6 +44,7 @@ See [Authorization Boundaries](docs/authorization.md) for protected URL-manageme
 See [URL Creation Contract](docs/url-creation.md) for validation, UTC expiry, entropy, and concurrency-safe uniqueness behavior.
 See [Owned URL Query API](docs/owned-url-query.md) for dashboard listing, search, filters, sorting, deletion visibility, and pagination.
 See [Owned URL Mutation Lifecycle](docs/url-lifecycle.md) for update/status/delete/restore contracts. The restore window is configured with `ShortUrlLifecycle:SoftDeleteRetentionDays` and defaults to 30 days.
+See [Management API Contract](docs/management-api.md) for the finalized Angular-facing resource, collection, error, UTC timestamp, and public URL contracts.
 
 ### 3) Database setup
 Restore the repository-pinned EF CLI:
@@ -72,10 +73,9 @@ After startup, open:
 - `https://localhost:7221/swagger`
 - `http://localhost:5034/swagger`
 
-## Base URL Note
-The returned `shortUrl` is built from the incoming request scheme and host (`Request.Scheme` + `Request.Host`).
+## Public Short URL Base
 
-Example: if you call `POST` on `https://localhost:7221`, the API returns `shortUrl` like `https://localhost:7221/r/{shortCode}`.
+`PublicUrls:BaseUrl` is the canonical externally reachable origin used for every returned `shortUrl`. Development defaults to `https://localhost:7221`; deployed environments must supply their public origin, normally through `PublicUrls__BaseUrl`. The API does not construct public URLs from the request host or an internal reverse-proxy/container host. See [Management API Contract](docs/management-api.md) for the proxy routing model.
 
 ## Endpoints
 
@@ -131,7 +131,12 @@ Sample success response (`201 Created`):
   "createdAtUtc": "2026-02-18T16:10:00Z",
   "expiresAtUtc": "2026-12-31T00:00:00Z",
   "isActive": true,
-  "clickCount": 0
+  "isExpired": false,
+  "isDeleted": false,
+  "deletedAtUtc": null,
+  "restoreUntilUtc": null,
+  "clickCount": 0,
+  "lastAccessedAtUtc": null
 }
 ```
 
@@ -173,9 +178,11 @@ Sample response (`200 OK`):
   "id": "c8e39a3e-7dd1-47f1-9c2f-e2e3130fef85",
   "originalUrl": "https://example.com/docs",
   "shortCode": "myAlias_01",
+  "shortUrl": "https://localhost:7221/r/myAlias_01",
   "createdAtUtc": "2026-02-18T16:10:00Z",
   "expiresAtUtc": "2026-12-31T00:00:00Z",
   "isActive": true,
+  "isExpired": false,
   "isDeleted": false,
   "clickCount": 4,
   "lastAccessedAtUtc": "2026-02-18T16:20:30Z"
@@ -203,9 +210,11 @@ Sample response (`200 OK`):
   "id": "c8e39a3e-7dd1-47f1-9c2f-e2e3130fef85",
   "originalUrl": "https://example.com/docs",
   "shortCode": "myAlias_01",
+  "shortUrl": "https://localhost:7221/r/myAlias_01",
   "createdAtUtc": "2026-02-18T16:10:00Z",
   "expiresAtUtc": "2026-12-31T00:00:00Z",
   "isActive": false,
+  "isExpired": false,
   "isDeleted": false,
   "clickCount": 4,
   "lastAccessedAtUtc": "2026-02-18T16:20:30Z"

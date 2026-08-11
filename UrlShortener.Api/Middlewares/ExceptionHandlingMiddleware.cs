@@ -46,13 +46,11 @@ public class ExceptionHandlingMiddleware
             statusCode = StatusCodes.Status400BadRequest;
             code = "VALIDATION_ERROR";
             message = "Validation failed.";
-            details = validationException.Errors
-                .Select(x => new ErrorDetail
-                {
-                    Field = ToCamelCase(x.PropertyName),
-                    Message = x.ErrorMessage
-                })
-                .ToList();
+            details = validationException.Errors.Select(x => new ErrorDetail
+            {
+                Field = ApiErrorFactory.ToCamelCase(x.PropertyName),
+                Message = x.ErrorMessage
+            }).ToList();
         }
         else if (exception is AliasConflictException)
         {
@@ -156,33 +154,10 @@ public class ExceptionHandlingMiddleware
         context.Response.StatusCode = statusCode;
         context.Response.ContentType = "application/json";
 
-        var response = new ErrorResponse
-        {
-            TraceId = context.TraceIdentifier,
-            Error = new ErrorBody
-            {
-                Code = code,
-                Message = message,
-                Details = details
-            }
-        };
+        var response = ApiErrorFactory.Create(context, code, message, details);
 
         var json = JsonSerializer.Serialize(response, JsonOptions);
         await context.Response.WriteAsync(json);
     }
 
-    private static string ToCamelCase(string value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return string.Empty;
-        }
-
-        if (value.Length == 1)
-        {
-            return value.ToLowerInvariant();
-        }
-
-        return char.ToLowerInvariant(value[0]) + value[1..];
-    }
 }

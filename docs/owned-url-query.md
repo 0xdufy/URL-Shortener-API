@@ -37,6 +37,7 @@ Example response:
       "id": "c8e39a3e-7dd1-47f1-9c2f-e2e3130fef85",
       "originalUrl": "https://example.com/docs",
       "shortCode": "myAlias_01",
+      "shortUrl": "https://sho.rt/r/myAlias_01",
       "createdAtUtc": "2026-08-11T18:00:00Z",
       "expiresAtUtc": "2026-12-31T00:00:00Z",
       "isActive": true,
@@ -45,14 +46,28 @@ Example response:
       "clickCount": 4
     }
   ],
-  "page": 1,
-  "pageSize": 20,
-  "totalItems": 1,
-  "totalPages": 1,
-  "hasPreviousPage": false,
-  "hasNextPage": false
+  "pagination": {
+    "page": 1,
+    "pageSize": 20,
+    "totalItems": 1,
+    "totalPages": 1,
+    "hasPreviousPage": false,
+    "hasNextPage": false
+  },
+  "filters": {
+    "search": "docs",
+    "isActive": true,
+    "expiration": "notExpired",
+    "includeDeleted": false,
+    "createdFromUtc": null,
+    "createdToUtc": null,
+    "sortBy": "createdAt",
+    "sortDirection": "desc"
+  }
 }
 ```
+
+The `filters` object reports the normalized values the server applied. Each item includes the configured canonical `shortUrl`, so clients do not reconstruct redirect URLs.
 
 ## Query shape and indexes
 

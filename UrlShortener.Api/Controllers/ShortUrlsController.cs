@@ -71,21 +71,23 @@ public class ShortUrlsController : ControllerBase
         if (!allowed)
         {
             Response.Headers["Retry-After"] = retryAfterSeconds.ToString();
-            return StatusCode(StatusCodes.Status429TooManyRequests, CreateError("RATE_LIMITED", $"Too many requests. Retry after {retryAfterSeconds} seconds.", new List<ErrorDetail>()));
+            return StatusCode(StatusCodes.Status429TooManyRequests, ApiErrorFactory.Create(
+                HttpContext,
+                "RATE_LIMITED",
+                $"Too many requests. Retry after {retryAfterSeconds} seconds."));
         }
 
         var validRequest = EnsureValidModelAndBody(request);
 
         await _createValidator.ValidateAndThrowAsync(validRequest, ct);
 
-        var baseHost = $"{Request.Scheme}://{Request.Host}";
-        var response = await _shortUrlService.CreateAsync(validRequest, baseHost, ip, ct);
+        var response = await _shortUrlService.CreateAsync(validRequest, ip, ct);
 
         return Created($"/api/v1/short-urls/{response.ShortCode}", response);
     }
 
     [HttpGet("{shortCode}")]
-    [ProducesResponseType(typeof(ShortUrlDetailsResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ShortUrlResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetByShortCode([FromRoute] string shortCode, CancellationToken ct)
@@ -93,7 +95,7 @@ public class ShortUrlsController : ControllerBase
         var response = await _shortUrlService.GetAsync(shortCode, ct);
         if (response == null)
         {
-            return NotFound(CreateError("NOT_FOUND", "Short URL not found.", new List<ErrorDetail>()));
+            return NotFound(ApiErrorFactory.Create(HttpContext, "NOT_FOUND", "Short URL not found."));
         }
 
         return Ok(response);
@@ -101,7 +103,7 @@ public class ShortUrlsController : ControllerBase
 
     [HttpPut("{shortCode}")]
     [Consumes("application/json")]
-    [ProducesResponseType(typeof(ShortUrlDetailsResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ShortUrlResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
@@ -116,7 +118,7 @@ public class ShortUrlsController : ControllerBase
         var response = await _shortUrlService.UpdateAsync(shortCode, validRequest, ct);
         if (response == null)
         {
-            return NotFound(CreateError("NOT_FOUND", "Short URL not found.", new List<ErrorDetail>()));
+            return NotFound(ApiErrorFactory.Create(HttpContext, "NOT_FOUND", "Short URL not found."));
         }
 
         return Ok(response);
@@ -124,7 +126,7 @@ public class ShortUrlsController : ControllerBase
 
     [HttpPatch("{shortCode}/status")]
     [Consumes("application/json")]
-    [ProducesResponseType(typeof(ShortUrlDetailsResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ShortUrlResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
@@ -137,7 +139,7 @@ public class ShortUrlsController : ControllerBase
         var response = await _shortUrlService.SetStatusAsync(shortCode, validRequest.IsActive.GetValueOrDefault(), ct);
         if (response == null)
         {
-            return NotFound(CreateError("NOT_FOUND", "Short URL not found.", new List<ErrorDetail>()));
+            return NotFound(ApiErrorFactory.Create(HttpContext, "NOT_FOUND", "Short URL not found."));
         }
 
         return Ok(response);
@@ -152,14 +154,14 @@ public class ShortUrlsController : ControllerBase
         var deleted = await _shortUrlService.DeleteAsync(shortCode, ct);
         if (!deleted)
         {
-            return NotFound(CreateError("NOT_FOUND", "Short URL not found.", new List<ErrorDetail>()));
+            return NotFound(ApiErrorFactory.Create(HttpContext, "NOT_FOUND", "Short URL not found."));
         }
 
         return NoContent();
     }
 
     [HttpPost("{shortCode}/restore")]
-    [ProducesResponseType(typeof(ShortUrlDetailsResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ShortUrlResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status409Conflict)]
@@ -178,7 +180,7 @@ public class ShortUrlsController : ControllerBase
         var response = await _shortUrlService.GetStatsAsync(shortCode, fromUtc, toUtc, ct);
         if (response == null)
         {
-            return NotFound(CreateError("NOT_FOUND", "Short URL not found.", new List<ErrorDetail>()));
+            return NotFound(ApiErrorFactory.Create(HttpContext, "NOT_FOUND", "Short URL not found."));
         }
 
         return Ok(response);
@@ -220,17 +222,4 @@ public class ShortUrlsController : ControllerBase
         }
     }
 
-    private ErrorResponse CreateError(string code, string message, List<ErrorDetail> details)
-    {
-        return new ErrorResponse
-        {
-            TraceId = HttpContext.TraceIdentifier,
-            Error = new ErrorBody
-            {
-                Code = code,
-                Message = message,
-                Details = details
-            }
-        };
-    }
 }

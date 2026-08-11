@@ -31,23 +31,9 @@ public class RedirectController : ControllerBase
 
         if (result.statusCode == StatusCodes.Status410Gone)
         {
-            return StatusCode(StatusCodes.Status410Gone, CreateError("EXPIRED", "Short URL has expired."));
+            return StatusCode(StatusCodes.Status410Gone, ApiErrorFactory.Create(HttpContext, "EXPIRED", "Short URL has expired."));
         }
 
-        return NotFound(CreateError("NOT_FOUND", "Short URL not found."));
-    }
-
-    private ErrorResponse CreateError(string code, string message)
-    {
-        return new ErrorResponse
-        {
-            TraceId = HttpContext.TraceIdentifier,
-            Error = new ErrorBody
-            {
-                Code = code,
-                Message = message,
-                Details = new List<ErrorDetail>()
-            }
-        };
+        return NotFound(ApiErrorFactory.Create(HttpContext, "NOT_FOUND", "Short URL not found."));
     }
 }

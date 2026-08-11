@@ -40,6 +40,7 @@ public static class ServiceCollectionExtensions
         var identitySection = configuration.GetRequiredSection(IdentitySecurityOptions.SectionName);
         var authenticationRateLimitingSection = configuration.GetRequiredSection(AuthenticationRateLimitingOptions.SectionName);
         var shortUrlLifecycleSection = configuration.GetRequiredSection(ShortUrlLifecycleOptions.SectionName);
+        var publicUrlSection = configuration.GetRequiredSection(PublicUrlOptions.SectionName);
 
         var storageOptions = storageSection.Get<StorageOptions>()
             ?? throw new InvalidOperationException($"Configuration section '{StorageOptions.SectionName}' is invalid.");
@@ -102,6 +103,14 @@ public static class ServiceCollectionExtensions
             .Validate(
                 options => options.SoftDeleteRetentionDays is >= 1 and <= 3650,
                 "ShortUrlLifecycle:SoftDeleteRetentionDays must be between 1 and 3650.")
+            .ValidateOnStart();
+
+        var publicUrlOptions = publicUrlSection.Get<PublicUrlOptions>()
+            ?? throw new InvalidOperationException($"Configuration section '{PublicUrlOptions.SectionName}' is invalid.");
+        services.AddOptions<PublicUrlOptions>()
+            .Bind(publicUrlSection)
+            .Validate(options => IsValidPublicBaseUrl(options.BaseUrl),
+                "PublicUrls:BaseUrl must be an absolute HTTP or HTTPS origin without a path, query, fragment, or trailing slash.")
             .ValidateOnStart();
 
         var identityOptions = identitySection.Get<IdentitySecurityOptions>()
@@ -241,13 +250,28 @@ public static class ServiceCollectionExtensions
         var mvcBuilder = services.AddControllers();
         mvcBuilder.ConfigureApiBehaviorOptions(options =>
         {
-            options.SuppressModelStateInvalidFilter = true;
+            options.SuppressMapClientErrors = true;
+            options.InvalidModelStateResponseFactory = context =>
+            {
+                var failures = context.ModelState
+                    .Where(entry => entry.Value?.Errors.Count > 0)
+                    .SelectMany(entry => entry.Value!.Errors.Select(error =>
+                        new FluentValidation.Results.ValidationFailure(
+                            string.IsNullOrWhiteSpace(entry.Key) ? "request" : entry.Key,
+                            string.IsNullOrWhiteSpace(error.ErrorMessage)
+                                ? "The request value is invalid."
+                                : error.ErrorMessage)));
+
+                return new Microsoft.AspNetCore.Mvc.BadRequestObjectResult(
+                    ApiErrorFactory.Validation(context.HttpContext, failures));
+            };
         });
 
         services.AddValidatorsFromAssemblyContaining<CreateShortUrlRequestValidator>();
 
         services.AddScoped<IShortUrlService, ShortUrlService>();
         services.AddSingleton(new ShortUrlLifecycleSettings(shortUrlLifecycleOptions.SoftDeleteRetentionDays));
+        services.AddSingleton(new ShortUrlContractSettings(publicUrlOptions.BaseUrl));
         services.AddScoped<ICurrentUserContext, HttpCurrentUserContext>();
         if (storageOptions.UseInMemory)
         {
@@ -305,6 +329,9 @@ public static class ServiceCollectionExtensions
         uri.AbsolutePath == "/" &&
         !value.EndsWith("/", StringComparison.Ordinal);
 
+    private static bool IsValidPublicBaseUrl(string value) =>
+        IsValidOrigin(value);
+
     private static async Task WriteAuthenticationErrorAsync(
         HttpContext context,
         int statusCode,
@@ -318,15 +345,7 @@ public static class ServiceCollectionExtensions
 
         context.Response.StatusCode = statusCode;
         context.Response.ContentType = "application/json";
-        var response = new ErrorResponse
-        {
-            TraceId = context.TraceIdentifier,
-            Error = new ErrorBody
-            {
-                Code = code,
-                Message = message
-            }
-        };
+        var response = ApiErrorFactory.Create(context, code, message);
         await JsonSerializer.SerializeAsync(context.Response.Body, response, JsonOptions);
     }
 

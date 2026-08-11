@@ -13,7 +13,7 @@ All lifecycle endpoints require a bearer token and resolve the current owner thr
 }
 ```
 
-`originalUrl` is required, limited to 2,048 characters, and must be an absolute HTTP or HTTPS URL. `expiresAtUtc` may be omitted or `null` to clear expiry; otherwise it must be a future UTC timestamp ending in `Z`. These are the same destination and expiry rules used at creation. Success returns `200` with `ShortUrlDetailsResponse`; invalid input returns `400 VALIDATION_ERROR`.
+`originalUrl` is required, limited to 2,048 characters, and must be an absolute HTTP or HTTPS URL. `expiresAtUtc` may be omitted or `null` to clear expiry; otherwise it must be a future UTC timestamp ending in `Z`. These are the same destination and expiry rules used at creation. Success returns `200` with the shared `ShortUrlResponse`; invalid input returns `400 VALIDATION_ERROR`.
 
 Aliases are immutable. The route short code, `id`, `ownerId`, `createdAtUtc`, deletion state, active state, and counters are not update-body fields. Unknown JSON properties cannot transfer ownership or change those system fields. An alias remains globally claimed while its row is soft-deleted, so creation with the same alias returns `409 ALIAS_CONFLICT`.
 
@@ -47,9 +47,9 @@ No alias mutation or ownership transfer occurs in this lifecycle, so no new uniq
 
 | Endpoint | Success | Other documented outcomes |
 | --- | --- | --- |
-| `PUT /api/v1/short-urls/{shortCode}` | `200` details | `400`, `401`, `404` |
-| `PATCH /api/v1/short-urls/{shortCode}/status` | `200` details | `400`, `401`, `404` |
-| `DELETE /api/v1/short-urls/{shortCode}` | `204` | `401`, `404` |
-| `POST /api/v1/short-urls/{shortCode}/restore` | `200` details | `401`, `404`, `409`, `410` |
+| `PUT /api/v1/short-urls/{shortCode}` | `200` details | `400`, `401`, `403`, `404` |
+| `PATCH /api/v1/short-urls/{shortCode}/status` | `200` details | `400`, `401`, `403`, `404` |
+| `DELETE /api/v1/short-urls/{shortCode}` | `204` | `401`, `403`, `404` |
+| `POST /api/v1/short-urls/{shortCode}/restore` | `200` details | `401`, `403`, `404`, `409`, `410` |
 
 The OpenAPI document includes these request/response schemas, response codes, and lifecycle descriptions.
