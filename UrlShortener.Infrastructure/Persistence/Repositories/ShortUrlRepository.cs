@@ -9,6 +9,7 @@ namespace UrlShortener.Infrastructure.Persistence.Repositories;
 public class ShortUrlRepository : IShortUrlRepository
 {
     private const string CaseSensitiveCollation = "Latin1_General_CS_AS";
+    private const string BinaryCollation = "Latin1_General_100_BIN2";
     private const string ShortCodeUniqueIndexName = "IX_ShortUrls_ShortCode";
     private readonly AppDbContext _dbContext;
 
@@ -145,11 +146,18 @@ public class ShortUrlRepository : IShortUrlRepository
         return grouped.Select(x => (x.DateUtc, x.Clicks)).ToList();
     }
 
-    public async Task<bool> IncrementClickCountAsync(Guid shortUrlId, DateTime accessedAtUtc, CancellationToken ct)
+    public async Task<bool> IncrementClickCountAsync(
+        Guid shortUrlId,
+        string expectedOriginalUrl,
+        DateTime? expectedExpiresAtUtc,
+        DateTime accessedAtUtc,
+        CancellationToken ct)
     {
         var affectedRows = await _dbContext.ShortUrls
             .Where(x =>
                 x.Id == shortUrlId &&
+                EF.Functions.Collate(x.OriginalUrl, BinaryCollation) == expectedOriginalUrl &&
+                x.ExpiresAtUtc == expectedExpiresAtUtc &&
                 !x.IsDeleted &&
                 x.IsActive &&
                 (!x.ExpiresAtUtc.HasValue || x.ExpiresAtUtc.Value > accessedAtUtc))

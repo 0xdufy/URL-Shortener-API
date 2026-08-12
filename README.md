@@ -52,7 +52,9 @@ Redis infrastructure is configured separately from redirect cache policy. Develo
 credential-free loopback endpoint `127.0.0.1:6379`; deployed environments must provide
 `Redis__ConnectionString` and an environment-specific `Redis__KeyPrefix` through configuration and
 secret sources. See [Redis Infrastructure](docs/redis.md) for local Docker commands, validated
-settings, key namespaces, connection lifetime, and outage behavior.
+settings, key namespaces, connection lifetime, and outage behavior. See
+[Distributed Redirect Cache](docs/redirect-cache.md) for the shared key, payload, absolute TTL,
+invalidation, race-safety, and persistence-fallback contract.
 
 ### 3) Database setup
 Restore the repository-pinned EF CLI:

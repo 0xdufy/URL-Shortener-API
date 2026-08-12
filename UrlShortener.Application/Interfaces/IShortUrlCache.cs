@@ -5,6 +5,6 @@ namespace UrlShortener.Application.Interfaces;
 public interface IShortUrlCache
 {
     Task<ShortUrlCacheModel?> GetAsync(string shortCode, CancellationToken ct);
-    Task SetAsync(string shortCode, ShortUrlCacheModel model, TimeSpan ttl, CancellationToken ct);
+    Task SetAsync(string shortCode, ShortUrlCacheModel model, DateTime absoluteExpirationUtc, CancellationToken ct);
     Task RemoveAsync(string shortCode, CancellationToken ct);
 }

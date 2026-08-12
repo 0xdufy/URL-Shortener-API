@@ -1,10 +1,11 @@
 namespace UrlShortener.Application.Dtos;
 
-public class ShortUrlCacheModel
+public sealed class ShortUrlCacheModel
 {
-    public Guid ShortUrlId { get; set; }
-    public string OriginalUrl { get; set; } = string.Empty;
-    public DateTime? ExpiresAtUtc { get; set; }
-    public bool IsActive { get; set; }
-    public bool IsDeleted { get; set; }
+    public const int CurrentSchemaVersion = 1;
+
+    public int SchemaVersion { get; init; } = CurrentSchemaVersion;
+    public Guid ShortUrlId { get; init; }
+    public string OriginalUrl { get; init; } = string.Empty;
+    public DateTime? ExpiresAtUtc { get; init; }
 }

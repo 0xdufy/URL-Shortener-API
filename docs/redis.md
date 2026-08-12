@@ -8,9 +8,9 @@ dependency-injection container and owns one lazily created StackExchange.Redis c
 multiplexer for the application lifetime. The provider disposes that connection during host
 shutdown; request handlers and feature adapters must not create their own connections.
 
-TASK-023 only establishes the distributed-cache connection boundary. `IShortUrlCache` remains
-backed by the existing process-local memory implementation until TASK-024 defines redirect cache
-serialization, TTL, invalidation, and fallback policy.
+`IShortUrlCache` uses this provider directly for the distributed redirect cache. Its serialization,
+absolute-expiration, invalidation, race-safety, and persistence-fallback contract is documented in
+[`redirect-cache.md`](redirect-cache.md).
 
 ## Configuration
 
@@ -49,10 +49,12 @@ has exactly three segments:
 <application>:<environment>:<schema-version>:
 ```
 
-Feature adapters append a feature-owned key such as `redirect:<short-code>`, producing a physical
-key such as `url-shortener:production:v1:redirect:Ab12Cd34`. A schema-incompatible key layout must
-increment the final version segment. Adapters must not use unprefixed global keys or duplicate the
-application/environment prefix themselves.
+Feature adapters append a feature-owned, versioned key. Redirect caching uses
+`redirect:v1:<short-code>`, producing a physical key such as
+`url-shortener:production:v1:redirect:v1:Ab12Cd34`. A schema-incompatible provider namespace must
+increment the provider version; a redirect-only incompatibility increments its feature version.
+Adapters must not use unprefixed global keys or duplicate the application/environment prefix
+themselves.
 
 ## Timeout, Retry, and Outage Behavior
 
@@ -63,10 +65,9 @@ application/environment prefix themselves.
   infrastructure adapter.
 - The shared multiplexer reconnects in the background for its lifetime with exponential delays
   bounded between the configured base and maximum values.
-- When Redis is unavailable, resolving unrelated application routes continues to work. An actual
-  `IDistributedCache` operation fails with a StackExchange.Redis connection/timeout exception
-  instead of hanging or silently switching to process-local state. The consuming feature owns its
-  correctness fallback; TASK-024 will define that policy for redirect lookup caching.
+- When Redis is unavailable, the provider operation fails with a StackExchange.Redis
+  connection/timeout exception instead of hanging. The redirect adapter handles those bounded
+  failures as documented in `redirect-cache.md`; other consumers own their own failure policy.
 
 ## Local Development
 

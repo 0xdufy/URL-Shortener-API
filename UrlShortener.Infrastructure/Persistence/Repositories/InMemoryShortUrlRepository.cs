@@ -165,8 +165,15 @@ public class InMemoryShortUrlRepository : IShortUrlRepository
         }
     }
 
-    public Task<bool> IncrementClickCountAsync(Guid shortUrlId, DateTime accessedAtUtc, CancellationToken ct)
+    public Task<bool> IncrementClickCountAsync(
+        Guid shortUrlId,
+        string expectedOriginalUrl,
+        DateTime? expectedExpiresAtUtc,
+        DateTime accessedAtUtc,
+        CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
+
         lock (_sync)
         {
             if (!_shortUrlsById.TryGetValue(shortUrlId, out var entity))
@@ -174,7 +181,10 @@ public class InMemoryShortUrlRepository : IShortUrlRepository
                 return Task.FromResult(false);
             }
 
-            if (entity.IsDeleted || !entity.IsActive)
+            if (!string.Equals(entity.OriginalUrl, expectedOriginalUrl, StringComparison.Ordinal) ||
+                entity.ExpiresAtUtc != expectedExpiresAtUtc ||
+                entity.IsDeleted ||
+                !entity.IsActive)
             {
                 return Task.FromResult(false);
             }

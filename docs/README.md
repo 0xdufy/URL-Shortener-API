@@ -47,6 +47,7 @@ Use exactly one of:
 - `management-api.md` is the finalized Angular-facing management resource, pagination/filter, error, UTC timestamp, and public URL contract.
 - `persistence.md` describes storage configuration and migration operations.
 - `redis.md` describes distributed-cache configuration, connection lifecycle, key namespaces, local setup, and outage behavior.
+- `redirect-cache.md` defines redirect payloads, TTL, invalidation, race safety, and Redis outage fallback.
 - `resource-ownership.md` defines immutable ownership, legacy short-link treatment, and rules for future owned resources.
 
 ## Execution Rules
