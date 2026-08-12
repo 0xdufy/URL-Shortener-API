@@ -8,6 +8,7 @@ URL Shortener API is a .NET 10 ASP.NET Core Web API for creating and managing ow
 ### 1) Prerequisites
 - .NET 10 SDK (the repository `global.json` accepts the latest installed 10.0.1xx patch)
 - SQL Server (LocalDB or a full SQL Server instance)
+- Node.js `^20.19.0`, `^22.12.0`, or `>=24.0.0` and npm `>=10.0.0` for the Angular client
 
 ### 2) Configuration
 Development defaults to the non-production in-memory repository. To use SQL Server, supply the connection string through user secrets, an environment-specific untracked configuration source, or an environment variable:
@@ -72,6 +73,28 @@ dotnet run
 After startup, open:
 - `https://localhost:7221/swagger`
 - `http://localhost:5034/swagger`
+
+### 6) Run the Angular client
+
+Install and verify the pinned frontend toolchain from `web/`:
+
+```powershell
+cd web
+npm ci
+npm run format:check
+npm run lint
+npm run build
+```
+
+For local development, keep the API running on its documented HTTP profile and start Angular:
+
+```powershell
+npm start
+```
+
+Open `http://localhost:4200`. Development API requests use the centralized
+`http://localhost:5034/api/v1` base URL. Production builds use same-origin `/api/v1`; see
+[the Angular workspace guide](web/README.md) for the environment and deployment strategy.
 
 ## Public Short URL Base
 
