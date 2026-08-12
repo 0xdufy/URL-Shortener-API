@@ -12,6 +12,7 @@ export type IconName =
   | 'info'
   | 'key'
   | 'links'
+  | 'logout'
   | 'menu'
   | 'plus'
   | 'sparkles'
@@ -55,6 +56,10 @@ export type IconName =
         @case ('account') {
           <circle cx="12" cy="8" r="4" />
           <path d="M4.5 21a7.5 7.5 0 0 1 15 0" />
+        }
+        @case ('logout') {
+          <path d="M10 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h5" />
+          <path d="m16 8 4 4-4 4m4-4H9" />
         }
         @case ('menu') {
           <path d="M4 7h16M4 12h16M4 17h16" />

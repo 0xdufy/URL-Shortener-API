@@ -38,6 +38,13 @@ export interface CredentialsRequest {
   readonly password: string;
 }
 
+export interface BrowserAuthenticationBootstrap {
+  readonly csrfToken: string;
+  readonly publicRegistrationEnabled: boolean;
+  readonly passwordRequiredLength: number;
+  readonly passwordRequiredUniqueChars: number;
+}
+
 export interface ShortUrlResource {
   readonly id: string;
   readonly originalUrl: string;

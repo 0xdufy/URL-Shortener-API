@@ -36,6 +36,10 @@ export class AuthenticationStateService {
     this.reasonValue.set('authenticated');
   }
 
+  acceptCsrfToken(csrfToken: string): void {
+    this.csrfTokenValue.set(csrfToken);
+  }
+
   reconcileCurrentSession(session: CurrentAuthenticationSession): void {
     this.userValue.set(session.user);
     this.refreshSessionExpiresAtUtcValue.set(session.refreshSessionExpiresAtUtc);

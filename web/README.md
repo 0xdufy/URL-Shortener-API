@@ -84,6 +84,19 @@ idempotent transition to `unauthorized`. Interceptors never navigate or retry au
 Phase 05 authentication experience owns refresh/bootstrap policy, safe return URLs, guards, and the
 single navigation response to that state, which prevents interceptor/guard redirect loops.
 
+The authentication experience is available at `/auth/sign-in` and, when the server reports public
+registration enabled, `/auth/register`. The `/app/*` guard first requests `/auth/bootstrap` to obtain
+a fresh in-memory antiforgery request token and safe public policy metadata, then attempts refresh
+and current-user reconciliation. This makes full-page reload recovery possible without placing an
+access token, refresh token, or antiforgery token in local or session storage. Only return URLs under
+`/app` are honored after authentication.
+
+The application shell derives its account label from the safe current-user response and owns the
+explicit sign-out action. An expired or revoked session clears protected state and performs one
+replace-navigation to sign-in with the current safe application URL. The HTTP interceptor remains
+navigation-free and does not retry requests, so authorization failures cannot create refresh or
+redirect loops.
+
 ### Client maintenance decision
 
 The client is manually maintained for the current compact API surface. This avoids committing a

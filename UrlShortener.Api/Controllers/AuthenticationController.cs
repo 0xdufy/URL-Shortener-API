@@ -49,6 +49,23 @@ public sealed class AuthenticationController : ControllerBase
         _options = options.Value;
     }
 
+    [HttpGet("bootstrap")]
+    [ProducesResponseType(typeof(BrowserAuthenticationBootstrapResponse), StatusCodes.Status200OK)]
+    public ActionResult<BrowserAuthenticationBootstrapResponse> Bootstrap()
+    {
+        var csrfTokens = _antiforgery.GetAndStoreTokens(HttpContext);
+        var csrfToken = csrfTokens.RequestToken ??
+            throw new InvalidOperationException("Antiforgery token generation failed.");
+
+        return Ok(new BrowserAuthenticationBootstrapResponse
+        {
+            CsrfToken = csrfToken,
+            PublicRegistrationEnabled = _options.PublicRegistrationEnabled,
+            PasswordRequiredLength = _options.PasswordRequiredLength,
+            PasswordRequiredUniqueChars = _options.PasswordRequiredUniqueChars
+        });
+    }
+
     [HttpPost("register")]
     [ProducesResponseType(typeof(AuthenticationSessionResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]

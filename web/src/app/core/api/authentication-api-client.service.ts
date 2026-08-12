@@ -11,6 +11,7 @@ import {
 } from './api-request-context';
 import {
   AuthenticationSession,
+  BrowserAuthenticationBootstrap,
   CredentialsRequest,
   CurrentAuthenticationSession,
 } from './api.models';
@@ -21,6 +22,14 @@ export class AuthenticationApiClient {
   private readonly http = inject(HttpClient);
   private readonly authenticationState = inject(AuthenticationStateService);
   private readonly baseUrl = `${normalizeApiBaseUrl(inject(API_BASE_URL))}/auth`;
+
+  bootstrap(): Observable<BrowserAuthenticationBootstrap> {
+    return this.http
+      .get<BrowserAuthenticationBootstrap>(`${this.baseUrl}/bootstrap`, {
+        context: this.browserSessionContext(false),
+      })
+      .pipe(tap(({ csrfToken }) => this.authenticationState.acceptCsrfToken(csrfToken)));
+  }
 
   register(request: CredentialsRequest): Observable<AuthenticationSession> {
     return this.http

@@ -1,8 +1,21 @@
-import { ChangeDetectionStrategy, Component, HostListener, signal } from '@angular/core';
-import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  HostListener,
+  computed,
+  effect,
+  inject,
+  signal,
+} from '@angular/core';
+import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { finalize } from 'rxjs';
 
+import { AuthenticationApiClient } from '../../core/api/authentication-api-client.service';
+import { AuthenticationStateService } from '../../core/auth/authentication-state.service';
+import { safeReturnUrl } from '../../core/auth/safe-return-url';
 import { IconComponent, IconName } from '../../shared/ui/icon/icon.component';
 import { ToastViewportComponent } from '../../shared/ui/toast/toast-viewport.component';
+import { ToastService } from '../../shared/ui/toast/toast.service';
 
 interface NavigationItem {
   readonly label: string;
@@ -35,10 +48,10 @@ interface NavigationItem {
         </a>
 
         <a class="account-button" routerLink="/app/account" aria-label="Open account settings">
-          <span class="avatar" aria-hidden="true">AD</span>
+          <span class="avatar" aria-hidden="true">{{ userInitials() }}</span>
           <span class="account-copy">
-            <strong>Account</strong>
-            <small>Workspace owner</small>
+            <strong>{{ authenticationState.user()?.email }}</strong>
+            <small>Account settings</small>
           </span>
           <app-icon name="chevron-down" />
         </a>
@@ -79,6 +92,13 @@ interface NavigationItem {
         </nav>
 
         <div class="sidebar-footer">
+          <div class="signed-in-user">
+            <span class="avatar" aria-hidden="true">{{ userInitials() }}</span>
+            <span>
+              <strong>Signed in</strong>
+              <small>{{ authenticationState.user()?.email }}</small>
+            </span>
+          </div>
           <a
             routerLink="/app/account"
             routerLinkActive="active"
@@ -88,6 +108,15 @@ interface NavigationItem {
             <app-icon name="account" />
             <span>Account</span>
           </a>
+          <button
+            type="button"
+            class="sign-out-button"
+            [disabled]="signingOut()"
+            (click)="signOut()"
+          >
+            <app-icon name="logout" />
+            <span>{{ signingOut() ? 'Signing out…' : 'Sign out' }}</span>
+          </button>
           <p>URL Shortener <span aria-hidden="true">·</span> v1 foundation</p>
         </div>
       </aside>
@@ -112,7 +141,16 @@ interface NavigationItem {
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ApplicationShellComponent {
+  protected readonly authenticationState = inject(AuthenticationStateService);
+  private readonly authenticationApi = inject(AuthenticationApiClient);
+  private readonly router = inject(Router);
+  private readonly toastService = inject(ToastService);
   protected readonly navigationOpen = signal(false);
+  protected readonly signingOut = signal(false);
+  protected readonly userInitials = computed(() => {
+    const email = this.authenticationState.user()?.email ?? '';
+    return email.slice(0, 2).toUpperCase() || 'U';
+  });
   protected readonly primaryNavigation: readonly NavigationItem[] = [
     { label: 'Dashboard', path: '/app/dashboard', icon: 'dashboard' },
     { label: 'Links', path: '/app/links', icon: 'links' },
@@ -123,6 +161,19 @@ export class ApplicationShellComponent {
     { label: 'Domains', path: '/app/domains', icon: 'domains' },
   ];
 
+  constructor() {
+    effect(() => {
+      if (this.authenticationState.reason() !== 'unauthorized') {
+        return;
+      }
+
+      void this.router.navigate(['/auth/sign-in'], {
+        queryParams: { returnUrl: safeReturnUrl(this.router.url) },
+        replaceUrl: true,
+      });
+    });
+  }
+
   @HostListener('document:keydown.escape')
   protected closeNavigation(): void {
     this.navigationOpen.set(false);
@@ -130,5 +181,30 @@ export class ApplicationShellComponent {
 
   protected toggleNavigation(): void {
     this.navigationOpen.update((open) => !open);
+  }
+
+  protected signOut(): void {
+    if (this.signingOut()) {
+      return;
+    }
+
+    this.signingOut.set(true);
+    this.authenticationApi
+      .signOut()
+      .pipe(finalize(() => this.signingOut.set(false)))
+      .subscribe({
+        next: () => {
+          this.toastService.show('Signed out', 'Your browser session has ended.', 'info');
+          void this.router.navigate(['/auth/sign-in'], { replaceUrl: true });
+        },
+        error: () => {
+          this.toastService.show(
+            'Signed out locally',
+            'The server could not confirm sign-out. Close shared browsers for safety.',
+            'error',
+          );
+          void this.router.navigate(['/auth/sign-in'], { replaceUrl: true });
+        },
+      });
   }
 }

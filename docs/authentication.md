@@ -48,6 +48,22 @@ Safe, non-secret settings live under `Identity`:
 
 ## Endpoints
 
+### `GET /api/v1/auth/bootstrap`
+
+Returns the antiforgery request token required to resume or end an HttpOnly refresh-cookie session,
+plus safe public registration and password-policy metadata. The response stores the matching
+HttpOnly antiforgery cookie. The Angular client keeps the returned token in memory; it does not
+persist it in browser storage.
+
+```json
+{
+  "csrfToken": "<antiforgery request token>",
+  "publicRegistrationEnabled": true,
+  "passwordRequiredLength": 12,
+  "passwordRequiredUniqueChars": 4
+}
+```
+
 ### `POST /api/v1/auth/register`
 
 Request:

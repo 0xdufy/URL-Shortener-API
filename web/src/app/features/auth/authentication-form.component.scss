@@ -1,0 +1,82 @@
+:host {
+  display: block;
+  width: min(100%, 28rem);
+}
+
+.form-card {
+  width: 100%;
+}
+
+.form-heading {
+  margin-bottom: var(--space-8);
+}
+
+.eyebrow {
+  margin: 0 0 var(--space-2);
+  color: var(--color-primary);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+h2 {
+  margin: 0;
+  font-size: clamp(1.8rem, 4vw, 2.3rem);
+  line-height: 1.15;
+  letter-spacing: -0.035em;
+}
+
+.form-heading > p:last-child,
+.alternate-action {
+  margin: var(--space-3) 0 0;
+  color: var(--color-text-muted);
+}
+
+form {
+  display: grid;
+  gap: var(--space-5);
+}
+
+app-button {
+  margin-top: var(--space-2);
+}
+
+.form-error {
+  display: grid;
+  gap: 0.15rem;
+  margin-bottom: var(--space-5);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid #f1bdc2;
+  border-radius: var(--radius-sm);
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+  font-size: 0.85rem;
+}
+
+.form-error span {
+  color: #8e2731;
+}
+
+.alternate-action {
+  margin-top: var(--space-8);
+  text-align: center;
+}
+
+.alternate-action a {
+  margin-left: var(--space-1);
+  font-weight: 750;
+}
+
+.unavailable .primary-link {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  margin-top: var(--space-6);
+  padding: 0.65rem 1rem;
+  border-radius: var(--radius-sm);
+  background: var(--color-primary);
+  color: #fff;
+  font-weight: 700;
+  text-decoration: none;
+}
