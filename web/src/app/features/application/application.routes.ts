@@ -39,10 +39,27 @@ export const APPLICATION_ROUTES: Routes = [
         path: 'links/new',
         title: 'Create link | Shortly',
         data: {
+          mode: 'create',
           title: 'Create a link',
-          description: 'The create-link workflow will be available here.',
+          description: 'Create a short link with a generated code or custom alias.',
         },
-        loadComponent: loadPlaceholder,
+        loadComponent: () =>
+          import('./link-form-page.component').then(
+            ({ LinkFormPageComponent }) => LinkFormPageComponent,
+          ),
+      },
+      {
+        path: 'links/:shortCode/edit',
+        title: 'Edit link | Shortly',
+        data: {
+          mode: 'edit',
+          title: 'Edit link',
+          description: 'Update an owned link destination or expiry.',
+        },
+        loadComponent: () =>
+          import('./link-form-page.component').then(
+            ({ LinkFormPageComponent }) => LinkFormPageComponent,
+          ),
       },
       {
         path: 'links/:shortCode',

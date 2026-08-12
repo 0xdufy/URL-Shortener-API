@@ -338,7 +338,14 @@ td > small {
   text-align: right;
 }
 
-.details-cell a {
+.table-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-3);
+}
+
+.table-actions a {
   font-size: 0.78rem;
   font-weight: 700;
   text-decoration: none;

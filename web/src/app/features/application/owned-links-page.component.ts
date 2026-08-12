@@ -258,7 +258,12 @@ interface LinkStatus {
                         <small>{{ link.createdAtUtc | date: 'shortTime' }}</small>
                       </td>
                       <td class="details-cell">
-                        <a [routerLink]="['/app/links', link.shortCode]">View details</a>
+                        <div class="table-actions">
+                          @if (!link.isDeleted) {
+                            <a [routerLink]="['/app/links', link.shortCode, 'edit']">Edit</a>
+                          }
+                          <a [routerLink]="['/app/links', link.shortCode]">View details</a>
+                        </div>
                       </td>
                     </tr>
                   }
@@ -296,6 +301,9 @@ interface LinkStatus {
                   </dl>
                   <div class="card-actions">
                     <button type="button" (click)="copyShortUrl(link)">Copy short URL</button>
+                    @if (!link.isDeleted) {
+                      <a [routerLink]="['/app/links', link.shortCode, 'edit']">Edit</a>
+                    }
                     <a [routerLink]="['/app/links', link.shortCode]">View details</a>
                   </div>
                 </article>
