@@ -9,6 +9,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Serilog;
 using Serilog.Events;
+using StackExchange.Redis;
 using UrlShortener.Api.Models;
 using UrlShortener.Api.Security;
 using UrlShortener.Application.Dtos;
@@ -41,6 +42,7 @@ public static class ServiceCollectionExtensions
         var authenticationRateLimitingSection = configuration.GetRequiredSection(AuthenticationRateLimitingOptions.SectionName);
         var shortUrlLifecycleSection = configuration.GetRequiredSection(ShortUrlLifecycleOptions.SectionName);
         var publicUrlSection = configuration.GetRequiredSection(PublicUrlOptions.SectionName);
+        var redisSection = configuration.GetRequiredSection(RedisOptions.SectionName);
 
         var storageOptions = storageSection.Get<StorageOptions>()
             ?? throw new InvalidOperationException($"Configuration section '{StorageOptions.SectionName}' is invalid.");
@@ -62,6 +64,36 @@ public static class ServiceCollectionExtensions
             .Bind(rateLimitingSection)
             .Validate(options => options.CreatePerMinuteLimit is >= 1 and <= 10_000, "RateLimiting:CreatePerMinuteLimit must be between 1 and 10000.")
             .ValidateOnStart();
+
+        var redisOptions = redisSection.Get<RedisOptions>()
+            ?? throw new InvalidOperationException($"Configuration section '{RedisOptions.SectionName}' is invalid.");
+        services.AddOptions<RedisOptions>()
+            .Bind(redisSection)
+            .Validate(
+                options => IsValidRedisConnectionString(options.ConnectionString),
+                "Redis:ConnectionString must contain a valid StackExchange.Redis endpoint configuration.")
+            .Validate(
+                options => IsValidRedisKeyPrefix(options.KeyPrefix),
+                "Redis:KeyPrefix must use the lowercase 'application:environment:vN:' format.")
+            .Validate(
+                options => options.ConnectTimeoutMilliseconds is >= 100 and <= 10_000,
+                "Redis:ConnectTimeoutMilliseconds must be between 100 and 10000.")
+            .Validate(
+                options => options.OperationTimeoutMilliseconds is >= 50 and <= 5_000,
+                "Redis:OperationTimeoutMilliseconds must be between 50 and 5000.")
+            .Validate(
+                options => options.ConnectRetryCount is >= 0 and <= 5,
+                "Redis:ConnectRetryCount must be between 0 and 5.")
+            .Validate(
+                options => options.ReconnectBaseDelayMilliseconds is >= 100 and <= 60_000,
+                "Redis:ReconnectBaseDelayMilliseconds must be between 100 and 60000.")
+            .Validate(
+                options => options.ReconnectMaxDelayMilliseconds >= options.ReconnectBaseDelayMilliseconds &&
+                    options.ReconnectMaxDelayMilliseconds <= 300_000,
+                "Redis:ReconnectMaxDelayMilliseconds must be at least ReconnectBaseDelayMilliseconds and no more than 300000.")
+            .ValidateOnStart();
+
+        services.AddRedisInfrastructure(redisOptions);
 
         services.AddOptions<IdentitySecurityOptions>()
             .Bind(identitySection)
@@ -301,6 +333,48 @@ public static class ServiceCollectionExtensions
             return false;
         }
     }
+
+    private static bool IsValidRedisConnectionString(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        try
+        {
+            return ConfigurationOptions.Parse(value, ignoreUnknown: false).EndPoints.Count > 0;
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+    }
+
+    private static bool IsValidRedisKeyPrefix(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value) || value.Length > 100 || !value.EndsWith(':'))
+        {
+            return false;
+        }
+
+        var segments = value[..^1].Split(':');
+        return segments.Length == 3 &&
+            segments[0].Length > 0 &&
+            segments[1].Length > 0 &&
+            segments[2].Length > 1 &&
+            segments[2][0] == 'v' &&
+            int.TryParse(segments[2][1..], out var version) &&
+            version > 0 &&
+            IsLowercaseSlug(segments[0]) &&
+            IsLowercaseSlug(segments[1]);
+    }
+
+    private static bool IsLowercaseSlug(string value) =>
+        value[0] != '-' &&
+        value[^1] != '-' &&
+        value.All(character =>
+            character is >= 'a' and <= 'z' or >= '0' and <= '9' or '-');
 
     private static byte[] ResolveSigningKey(
         StorageOptions storageOptions,

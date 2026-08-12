@@ -62,13 +62,26 @@ export const APPLICATION_ROUTES: Routes = [
           ),
       },
       {
+        path: 'links/:shortCode/analytics',
+        title: 'Link analytics | Shortly',
+        data: {
+          title: 'Link analytics',
+          description:
+            'Detailed trends and audience breakdowns will be available in the advanced analytics phase.',
+        },
+        loadComponent: loadPlaceholder,
+      },
+      {
         path: 'links/:shortCode',
         title: 'Link details | Shortly',
         data: {
           title: 'Link details',
-          description: 'The complete link details and lifecycle actions will be available here.',
+          description: 'Inspect and manage an owned short link.',
         },
-        loadComponent: loadPlaceholder,
+        loadComponent: () =>
+          import('./link-details-page.component').then(
+            ({ LinkDetailsPageComponent }) => LinkDetailsPageComponent,
+          ),
       },
       {
         path: 'analytics',

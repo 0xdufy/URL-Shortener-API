@@ -8,6 +8,7 @@ URL Shortener API is a .NET 10 ASP.NET Core Web API for creating and managing ow
 ### 1) Prerequisites
 - .NET 10 SDK (the repository `global.json` accepts the latest installed 10.0.1xx patch)
 - SQL Server (LocalDB or a full SQL Server instance)
+- Redis on `127.0.0.1:6379` (or Docker for the provisional local instance)
 - Node.js `^20.19.0`, `^22.12.0`, or `>=24.0.0` and npm `>=10.0.0` for the Angular client
 
 ### 2) Configuration
@@ -46,6 +47,12 @@ See [URL Creation Contract](docs/url-creation.md) for validation, UTC expiry, en
 See [Owned URL Query API](docs/owned-url-query.md) for dashboard listing, search, filters, sorting, deletion visibility, and pagination.
 See [Owned URL Mutation Lifecycle](docs/url-lifecycle.md) for update/status/delete/restore contracts. The restore window is configured with `ShortUrlLifecycle:SoftDeleteRetentionDays` and defaults to 30 days.
 See [Management API Contract](docs/management-api.md) for the finalized Angular-facing resource, collection, error, UTC timestamp, and public URL contracts.
+
+Redis infrastructure is configured separately from redirect cache policy. Development uses the
+credential-free loopback endpoint `127.0.0.1:6379`; deployed environments must provide
+`Redis__ConnectionString` and an environment-specific `Redis__KeyPrefix` through configuration and
+secret sources. See [Redis Infrastructure](docs/redis.md) for local Docker commands, validated
+settings, key namespaces, connection lifetime, and outage behavior.
 
 ### 3) Database setup
 Restore the repository-pinned EF CLI:
