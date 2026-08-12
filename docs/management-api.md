@@ -101,6 +101,11 @@ Supported query values are documented in Swagger. The defaults are page `1`, pag
 
 The create response includes a relative management `Location` header: `/api/v1/short-urls/{shortCode}`. Aliases are immutable after creation. `PUT` replaces the destination and expiry; a null or omitted `expiresAtUtc` clears expiry.
 
+Every management operation also has a distributed authenticated-user policy and may return
+`429 RATE_LIMITED` or `503 RATE_LIMITING_UNAVAILABLE`. Creation overrides that general policy with
+its own token bucket, so a create request consumes only the creation bucket. See
+[Distributed Rate Limiting](rate-limiting.md) for limits and retry metadata.
+
 ## Errors and authorization
 
 Every API error, including malformed JSON, unsupported media types, unknown API routes, authentication challenges, and application errors, uses:

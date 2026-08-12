@@ -46,6 +46,8 @@ Use exactly one of:
 - `authorization.md` defines protected management routes, owner-scoped access, and the 401/403/404 concealment policy.
 - `management-api.md` is the finalized Angular-facing management resource, pagination/filter, error, UTC timestamp, and public URL contract.
 - `persistence.md` describes storage configuration and migration operations.
+- `rate-limiting.md` defines distributed policies, identities, algorithms, configuration bounds,
+  Redis state/expiry, `429` metadata, and outage behavior.
 - `redis.md` describes distributed-cache configuration, connection lifecycle, key namespaces, local setup, and outage behavior.
 - `redirect-cache.md` defines redirect outcomes, payloads, TTL, invalidation, race safety,
   corruption handling, access recording, and Redis outage fallback.

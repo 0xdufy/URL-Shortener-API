@@ -35,7 +35,10 @@ Safe, non-secret settings live under `Identity`:
 | `RefreshTokenLifetimeDays` | `30` | Rolling refresh-session lifetime. |
 | `RefreshTokenAbsoluteLifetimeDays` | `90` | Maximum refresh-family lifetime. |
 
-`AuthenticationRateLimiting` supplies the current process-local registration, sign-in, and refresh partitions. These hooks are intentionally replaceable by the distributed limiter in Phase 07.
+Authentication endpoints use Redis-backed IP partitions shared by every API instance. Registration
+and sign-in have independent sliding-window policies; refresh and sign-out share the session policy.
+Bootstrap uses the broader anonymous fixed-window policy. Defaults, configuration bounds, direct-IP
+semantics, and outage behavior are documented in [Distributed Rate Limiting](rate-limiting.md).
 
 ## Transport contract
 
@@ -127,4 +130,6 @@ Authentication errors retain the platform contract:
 }
 ```
 
-Relevant codes are `VALIDATION_ERROR`, `ACCOUNT_UNAVAILABLE`, `AUTHENTICATION_FAILED`, `AUTHENTICATION_REQUIRED`, `INVALID_SESSION`, `CSRF_VALIDATION_FAILED`, `RATE_LIMITED`, and `AUTHENTICATION_UNAVAILABLE`.
+Relevant codes are `VALIDATION_ERROR`, `ACCOUNT_UNAVAILABLE`, `AUTHENTICATION_FAILED`,
+`AUTHENTICATION_REQUIRED`, `INVALID_SESSION`, `CSRF_VALIDATION_FAILED`, `RATE_LIMITED`,
+`RATE_LIMITING_UNAVAILABLE`, and `AUTHENTICATION_UNAVAILABLE`.

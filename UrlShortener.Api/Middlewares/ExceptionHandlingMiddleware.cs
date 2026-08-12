@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using FluentValidation;
 using Microsoft.AspNetCore.Antiforgery;
@@ -87,7 +88,14 @@ public class ExceptionHandlingMiddleware
             statusCode = StatusCodes.Status429TooManyRequests;
             code = "RATE_LIMITED";
             message = rateLimitedException.Message;
-            context.Response.Headers["Retry-After"] = rateLimitedException.RetryAfterSeconds.ToString();
+            context.Response.Headers["Retry-After"] = rateLimitedException.RetryAfterSeconds.ToString(CultureInfo.InvariantCulture);
+            context.Response.Headers.CacheControl = "no-store";
+        }
+        else if (exception is RateLimitingUnavailableException)
+        {
+            statusCode = StatusCodes.Status503ServiceUnavailable;
+            code = "RATE_LIMITING_UNAVAILABLE";
+            message = "Request rate limiting is temporarily unavailable.";
         }
         else if (exception is ShortCodeGenerationFailedException)
         {

@@ -3,14 +3,18 @@
 ## Provider and Lifecycle
 
 The API registers `Microsoft.Extensions.Caching.StackExchangeRedis` 10.0.10 as the
-`IDistributedCache` implementation. The framework provider is registered once in the
-dependency-injection container and owns one lazily created StackExchange.Redis connection
-multiplexer for the application lifetime. The provider disposes that connection during host
-shutdown; request handlers and feature adapters must not create their own connections.
+`IDistributedCache` implementation. A singleton `RedisConnectionProvider` owns one lazily created
+StackExchange.Redis connection multiplexer for the application lifetime. The framework cache and
+distributed rate limiter both obtain that same connection, and dependency injection disposes it
+during host shutdown. Request handlers and feature adapters must not create their own connections.
 
 `IShortUrlCache` uses this provider directly for the distributed redirect cache. Its serialization,
 absolute-expiration, invalidation, race-safety, and persistence-fallback contract is documented in
 [`redirect-cache.md`](redirect-cache.md).
+
+`IDistributedRateLimiter` uses the shared multiplexer for atomic server-side policy evaluation. Its
+identity partitions, algorithms, key expiry, and fail-closed contract are documented in
+[`rate-limiting.md`](rate-limiting.md).
 
 ## Configuration
 
@@ -51,10 +55,10 @@ has exactly three segments:
 
 Feature adapters append a feature-owned, versioned key. Redirect caching uses
 `redirect:v1:<short-code>`, producing a physical key such as
-`url-shortener:production:v1:redirect:v1:Ab12Cd34`. A schema-incompatible provider namespace must
-increment the provider version; a redirect-only incompatibility increments its feature version.
-Adapters must not use unprefixed global keys or duplicate the application/environment prefix
-themselves.
+`url-shortener:production:v1:redirect:v1:Ab12Cd34`. Rate limiting uses
+`ratelimit:v1:<policy>:<sha256-partition>`. A schema-incompatible provider namespace must increment
+the provider version; a feature-only incompatibility increments its feature version. Adapters must
+not use unprefixed global keys or duplicate the application/environment prefix themselves.
 
 ## Timeout, Retry, and Outage Behavior
 
@@ -67,7 +71,8 @@ themselves.
   bounded between the configured base and maximum values.
 - When Redis is unavailable, the provider operation fails with a StackExchange.Redis
   connection/timeout exception instead of hanging. The redirect adapter handles those bounded
-  failures as documented in `redirect-cache.md`; other consumers own their own failure policy.
+  failures as documented in `redirect-cache.md`. Rate-limited endpoints fail closed with the
+  common `503 RATE_LIMITING_UNAVAILABLE` envelope; public redirects remain outside limiter policy.
 
 ## Local Development
 

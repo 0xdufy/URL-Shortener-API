@@ -5,13 +5,14 @@ using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
-using UrlShortener.Api.Middlewares;
 using UrlShortener.Api.Models;
+using UrlShortener.Api.RateLimiting;
 using UrlShortener.Api.Security;
 using UrlShortener.Application.Authentication;
 using UrlShortener.Application.Dtos;
 using UrlShortener.Application.Exceptions;
 using UrlShortener.Application.Interfaces;
+using UrlShortener.Application.RateLimiting;
 using UrlShortener.Infrastructure.Configuration;
 
 namespace UrlShortener.Api.Controllers;
@@ -24,8 +25,6 @@ public sealed class AuthenticationController : ControllerBase
     public const string RefreshCookieName = "urlshortener.refresh";
 
     private readonly IAuthenticationService _authenticationService;
-    private readonly IAuthenticationRateLimiter _rateLimiter;
-    private readonly IDateTimeProvider _dateTimeProvider;
     private readonly IValidator<RegisterRequest> _registerValidator;
     private readonly IValidator<SignInRequest> _signInValidator;
     private readonly IAntiforgery _antiforgery;
@@ -33,16 +32,12 @@ public sealed class AuthenticationController : ControllerBase
 
     public AuthenticationController(
         IAuthenticationService authenticationService,
-        IAuthenticationRateLimiter rateLimiter,
-        IDateTimeProvider dateTimeProvider,
         IValidator<RegisterRequest> registerValidator,
         IValidator<SignInRequest> signInValidator,
         IAntiforgery antiforgery,
         IOptions<IdentitySecurityOptions> options)
     {
         _authenticationService = authenticationService;
-        _rateLimiter = rateLimiter;
-        _dateTimeProvider = dateTimeProvider;
         _registerValidator = registerValidator;
         _signInValidator = signInValidator;
         _antiforgery = antiforgery;
@@ -50,7 +45,10 @@ public sealed class AuthenticationController : ControllerBase
     }
 
     [HttpGet("bootstrap")]
+    [DistributedRateLimit(RateLimitPolicy.Anonymous)]
     [ProducesResponseType(typeof(BrowserAuthenticationBootstrapResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status429TooManyRequests)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status503ServiceUnavailable)]
     public ActionResult<BrowserAuthenticationBootstrapResponse> Bootstrap()
     {
         var csrfTokens = _antiforgery.GetAndStoreTokens(HttpContext);
@@ -67,6 +65,7 @@ public sealed class AuthenticationController : ControllerBase
     }
 
     [HttpPost("register")]
+    [DistributedRateLimit(RateLimitPolicy.AuthenticationRegistration)]
     [ProducesResponseType(typeof(AuthenticationSessionResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status409Conflict)]
@@ -76,7 +75,6 @@ public sealed class AuthenticationController : ControllerBase
         [FromBody] RegisterRequest? request,
         CancellationToken cancellationToken)
     {
-        EnsureAllowed(AuthenticationOperation.Register);
         var validRequest = EnsureValidBody(request);
         await _registerValidator.ValidateAndThrowAsync(validRequest, cancellationToken);
         var session = await _authenticationService.RegisterAsync(validRequest, cancellationToken);
@@ -85,6 +83,7 @@ public sealed class AuthenticationController : ControllerBase
     }
 
     [HttpPost("sign-in")]
+    [DistributedRateLimit(RateLimitPolicy.AuthenticationSignIn)]
     [ProducesResponseType(typeof(AuthenticationSessionResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status401Unauthorized)]
@@ -94,7 +93,6 @@ public sealed class AuthenticationController : ControllerBase
         [FromBody] SignInRequest? request,
         CancellationToken cancellationToken)
     {
-        EnsureAllowed(AuthenticationOperation.SignIn);
         var validRequest = EnsureValidBody(request);
         await _signInValidator.ValidateAndThrowAsync(validRequest, cancellationToken);
         var session = await _authenticationService.SignInAsync(validRequest, cancellationToken);
@@ -102,6 +100,7 @@ public sealed class AuthenticationController : ControllerBase
     }
 
     [HttpPost("refresh")]
+    [DistributedRateLimit(RateLimitPolicy.AuthenticationSession)]
     [ProducesResponseType(typeof(AuthenticationSessionResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status401Unauthorized)]
@@ -110,7 +109,6 @@ public sealed class AuthenticationController : ControllerBase
     public async Task<ActionResult<AuthenticationSessionResponse>> Refresh(CancellationToken cancellationToken)
     {
         await ValidateBrowserMutationAsync();
-        EnsureAllowed(AuthenticationOperation.Refresh);
 
         if (!Request.Cookies.TryGetValue(RefreshCookieName, out var refreshToken))
         {
@@ -123,8 +121,10 @@ public sealed class AuthenticationController : ControllerBase
 
     [Authorize]
     [HttpGet("me")]
+    [DistributedRateLimit(RateLimitPolicy.Authenticated)]
     [ProducesResponseType(typeof(CurrentAuthenticationSessionResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status429TooManyRequests)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status503ServiceUnavailable)]
     public async Task<ActionResult<CurrentAuthenticationSessionResponse>> GetCurrent(
         CancellationToken cancellationToken)
@@ -148,8 +148,10 @@ public sealed class AuthenticationController : ControllerBase
     }
 
     [HttpPost("sign-out")]
+    [DistributedRateLimit(RateLimitPolicy.AuthenticationSession)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status429TooManyRequests)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> SignOut(CancellationToken cancellationToken)
     {
@@ -190,18 +192,6 @@ public sealed class AuthenticationController : ControllerBase
         }
 
         await _antiforgery.ValidateRequestAsync(HttpContext);
-    }
-
-    private void EnsureAllowed(AuthenticationOperation operation)
-    {
-        var partitionKey = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-        var decision = _rateLimiter.Check(operation, partitionKey, _dateTimeProvider.UtcNow);
-        if (!decision.IsAllowed)
-        {
-            throw new RateLimitedException(
-                $"Too many authentication requests. Retry after {decision.RetryAfterSeconds} seconds.",
-                decision.RetryAfterSeconds);
-        }
     }
 
     private CookieOptions CreateRefreshCookieOptions(DateTime? expiresAtUtc) => new()

@@ -2,19 +2,22 @@ using FluentValidation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using UrlShortener.Api.Models;
+using UrlShortener.Api.RateLimiting;
 using UrlShortener.Application.Dtos;
 using UrlShortener.Application.Interfaces;
+using UrlShortener.Application.RateLimiting;
 
 namespace UrlShortener.Api.Controllers;
 
 [ApiController]
 [Authorize]
+[DistributedRateLimit(RateLimitPolicy.Authenticated)]
+[ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status429TooManyRequests)]
+[ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status503ServiceUnavailable)]
 [Route("api/v1/short-urls")]
 public class ShortUrlsController : ControllerBase
 {
     private readonly IShortUrlService _shortUrlService;
-    private readonly IRateLimiter _rateLimiter;
-    private readonly IDateTimeProvider _dateTimeProvider;
     private readonly IValidator<CreateShortUrlRequest> _createValidator;
     private readonly IValidator<UpdateShortUrlRequest> _updateValidator;
     private readonly IValidator<UpdateStatusRequest> _updateStatusValidator;
@@ -22,16 +25,12 @@ public class ShortUrlsController : ControllerBase
 
     public ShortUrlsController(
         IShortUrlService shortUrlService,
-        IRateLimiter rateLimiter,
-        IDateTimeProvider dateTimeProvider,
         IValidator<CreateShortUrlRequest> createValidator,
         IValidator<UpdateShortUrlRequest> updateValidator,
         IValidator<UpdateStatusRequest> updateStatusValidator,
         IValidator<ShortUrlListQuery> listValidator)
     {
         _shortUrlService = shortUrlService;
-        _rateLimiter = rateLimiter;
-        _dateTimeProvider = dateTimeProvider;
         _createValidator = createValidator;
         _updateValidator = updateValidator;
         _updateStatusValidator = updateStatusValidator;
@@ -57,6 +56,7 @@ public class ShortUrlsController : ControllerBase
     }
 
     [HttpPost]
+    [DistributedRateLimit(RateLimitPolicy.UrlCreation)]
     [Consumes("application/json")]
     [ProducesResponseType(typeof(ShortUrlResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
@@ -67,16 +67,6 @@ public class ShortUrlsController : ControllerBase
     public async Task<IActionResult> Create([FromBody] CreateShortUrlRequest? request, CancellationToken ct)
     {
         var ip = GetClientIp();
-        var allowed = _rateLimiter.IsAllowed(ip, _dateTimeProvider.UtcNow, out var remaining, out var retryAfterSeconds);
-        if (!allowed)
-        {
-            Response.Headers["Retry-After"] = retryAfterSeconds.ToString();
-            return StatusCode(StatusCodes.Status429TooManyRequests, ApiErrorFactory.Create(
-                HttpContext,
-                "RATE_LIMITED",
-                $"Too many requests. Retry after {retryAfterSeconds} seconds."));
-        }
-
         var validRequest = EnsureValidModelAndBody(request);
 
         await _createValidator.ValidateAndThrowAsync(validRequest, ct);

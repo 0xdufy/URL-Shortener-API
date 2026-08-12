@@ -2,6 +2,7 @@ using UrlShortener.Api.Extensions;
 using UrlShortener.Api.Middlewares;
 using UrlShortener.Api.OpenApi;
 using UrlShortener.Api.Models;
+using UrlShortener.Api.RateLimiting;
 using Microsoft.OpenApi;
 using Serilog;
 
@@ -47,6 +48,7 @@ app.UseStatusCodePages(async statusCodeContext =>
 });
 app.UseCors("TrustedWebClient");
 app.UseAuthentication();
+app.UseMiddleware<DistributedRateLimitingMiddleware>();
 app.UseAuthorization();
 app.UseSwagger();
 app.UseSwaggerUI();

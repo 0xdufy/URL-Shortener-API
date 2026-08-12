@@ -17,7 +17,7 @@ The committed `appsettings.json` intentionally contains no connection string and
 | `Persistence:MaxRetryCount` | Transient SQL retry count | 0 through 10 |
 | `Persistence:MaxRetryDelaySeconds` | Maximum delay between transient retries | 1 through 60 seconds |
 | `Persistence:CommandTimeoutSeconds` | SQL command timeout | 1 through 300 seconds |
-| `RateLimiting:CreatePerMinuteLimit` | Process-local create limit | 1 through 10,000 |
+| `RateLimiting:<Policy>` | Redis-backed endpoint quota policy | See `rate-limiting.md` for per-algorithm bounds |
 
 Options validation runs during startup. Invalid values fail with the full configuration key and permitted range. SQL retry behavior is bounded and only applies to errors the SQL Server provider identifies as transient.
 

@@ -37,9 +37,8 @@ public static class ServiceCollectionExtensions
     {
         var storageSection = configuration.GetRequiredSection(StorageOptions.SectionName);
         var persistenceSection = configuration.GetRequiredSection(PersistenceOptions.SectionName);
-        var rateLimitingSection = configuration.GetRequiredSection(RateLimitingOptions.SectionName);
+        var rateLimitingSection = configuration.GetRequiredSection(DistributedRateLimitingOptions.SectionName);
         var identitySection = configuration.GetRequiredSection(IdentitySecurityOptions.SectionName);
-        var authenticationRateLimitingSection = configuration.GetRequiredSection(AuthenticationRateLimitingOptions.SectionName);
         var shortUrlLifecycleSection = configuration.GetRequiredSection(ShortUrlLifecycleOptions.SectionName);
         var publicUrlSection = configuration.GetRequiredSection(PublicUrlOptions.SectionName);
         var redisSection = configuration.GetRequiredSection(RedisOptions.SectionName);
@@ -60,9 +59,11 @@ public static class ServiceCollectionExtensions
             .Validate(options => options.CommandTimeoutSeconds is >= 1 and <= 300, "Persistence:CommandTimeoutSeconds must be between 1 and 300.")
             .ValidateOnStart();
 
-        services.AddOptions<RateLimitingOptions>()
+        services.AddOptions<DistributedRateLimitingOptions>()
             .Bind(rateLimitingSection)
-            .Validate(options => options.CreatePerMinuteLimit is >= 1 and <= 10_000, "RateLimiting:CreatePerMinuteLimit must be between 1 and 10000.")
+            .Validate(
+                options => options.GetPolicies().All(policy => IsValidRateLimitPolicy(policy.Options)),
+                "Every RateLimiting policy must use a supported algorithm and safe permit/window/refill bounds.")
             .ValidateOnStart();
 
         var redisOptions = redisSection.Get<RedisOptions>()
@@ -119,13 +120,6 @@ public static class ServiceCollectionExtensions
                 options => options.RefreshTokenAbsoluteLifetimeDays >= options.RefreshTokenLifetimeDays &&
                     options.RefreshTokenAbsoluteLifetimeDays <= 180,
                 "Identity:RefreshTokenAbsoluteLifetimeDays must be between RefreshTokenLifetimeDays and 180.")
-            .ValidateOnStart();
-
-        services.AddOptions<AuthenticationRateLimitingOptions>()
-            .Bind(authenticationRateLimitingSection)
-            .Validate(options => options.RegistrationPerMinuteLimit is >= 1 and <= 10_000, "AuthenticationRateLimiting:RegistrationPerMinuteLimit must be between 1 and 10000.")
-            .Validate(options => options.SignInPerMinuteLimit is >= 1 and <= 10_000, "AuthenticationRateLimiting:SignInPerMinuteLimit must be between 1 and 10000.")
-            .Validate(options => options.RefreshPerMinuteLimit is >= 1 and <= 10_000, "AuthenticationRateLimiting:RefreshPerMinuteLimit must be between 1 and 10000.")
             .ValidateOnStart();
 
         var shortUrlLifecycleOptions = shortUrlLifecycleSection.Get<ShortUrlLifecycleOptions>()
@@ -317,8 +311,7 @@ public static class ServiceCollectionExtensions
         }
         services.AddSingleton<IShortCodeGenerator, ShortCodeGenerator>();
         services.AddSingleton<IShortUrlCache, ShortUrlCache>();
-        services.AddSingleton<IRateLimiter, InMemoryRateLimiter>();
-        services.AddSingleton<IAuthenticationRateLimiter, InMemoryAuthenticationRateLimiter>();
+        services.AddSingleton<IDistributedRateLimiter, RedisDistributedRateLimiter>();
         services.AddSingleton<IDateTimeProvider, DateTimeProvider>();
 
         return services;
@@ -334,6 +327,33 @@ public static class ServiceCollectionExtensions
         {
             return false;
         }
+    }
+
+    private static bool IsValidRateLimitPolicy(RateLimitPolicyOptions options)
+    {
+        if (!Enum.IsDefined(options.Algorithm) || options.PermitLimit is < 1 or > 100_000)
+        {
+            return false;
+        }
+
+        return options.Algorithm switch
+        {
+            RateLimitAlgorithm.FixedWindow or RateLimitAlgorithm.SlidingWindow =>
+                options.WindowSeconds is >= 1 and <= 86_400,
+            RateLimitAlgorithm.TokenBucket =>
+                options.TokensPerPeriod is >= 1 and <= 100_000 &&
+                options.TokensPerPeriod <= options.PermitLimit &&
+                options.ReplenishmentPeriodSeconds is >= 1 and <= 86_400 &&
+                HasSafeTokenBucketRetention(options),
+            _ => false
+        };
+    }
+
+    private static bool HasSafeTokenBucketRetention(RateLimitPolicyOptions options)
+    {
+        const int maximumFullRefillSeconds = 7 * 24 * 60 * 60;
+        return (long)options.PermitLimit * options.ReplenishmentPeriodSeconds <=
+            (long)options.TokensPerPeriod * maximumFullRefillSeconds;
     }
 
     private static bool IsValidRedisConnectionString(string value)

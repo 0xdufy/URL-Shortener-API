@@ -55,6 +55,8 @@ secret sources. See [Redis Infrastructure](docs/redis.md) for local Docker comma
 settings, key namespaces, connection lifetime, and outage behavior. See
 [Distributed Redirect Cache](docs/redirect-cache.md) for the shared key, payload, absolute TTL,
 invalidation, race-safety, corruption recovery, and persistence-fallback contract.
+See [Distributed Rate Limiting](docs/rate-limiting.md) for the shared policy matrix, identities,
+algorithms, safe configuration bounds, Redis key expiry, `429` retry metadata, and outage behavior.
 
 ### 3) Database setup
 Restore the repository-pinned EF CLI:
@@ -176,7 +178,8 @@ Status codes:
 - `201 Created`: short URL created
 - `400 Bad Request`: validation error (invalid URL, invalid alias, invalid expiry, missing body)
 - `409 Conflict`: alias already exists (`ALIAS_CONFLICT`)
-- `429 Too Many Requests`: create rate limit exceeded (`Retry-After` header is returned)
+- `429 Too Many Requests`: the per-user creation token bucket is exhausted (`Retry-After` and
+  `Cache-Control: no-store` headers are returned)
 - `500 Internal Server Error`: generated-code creation exhausted its five collision attempts (`SHORTCODE_GENERATION_FAILED`) or an unexpected persistence failure occurred
 
 Generated codes are eight case-sensitive base-62 characters. `originalUrl` is limited to 2,048 characters, and a supplied `expiresAtUtc` must be a future UTC timestamp ending in `Z`.
@@ -387,7 +390,7 @@ Rate limited example (`429`):
   "traceId": "00-55f39de9efea9b784be68ac9fd96f8b7-b63f7f5f3bbf8bb2-00",
   "error": {
     "code": "RATE_LIMITED",
-    "message": "Too many requests. Retry after 27 seconds.",
+    "message": "Rate limit exceeded. Retry after 27 seconds.",
     "details": []
   }
 }
