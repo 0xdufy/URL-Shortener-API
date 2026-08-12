@@ -1,5 +1,38 @@
 :root {
   color-scheme: light;
+  --color-canvas: #f5f7fb;
+  --color-surface: #ffffff;
+  --color-surface-subtle: #f8fafc;
+  --color-surface-accent: #eef2ff;
+  --color-text: #182033;
+  --color-text-muted: #62708a;
+  --color-border: #dfe4ee;
+  --color-border-strong: #c9d1df;
+  --color-primary: #4f46e5;
+  --color-primary-hover: #4338ca;
+  --color-primary-soft: #eef2ff;
+  --color-success: #16794b;
+  --color-success-soft: #eaf8f0;
+  --color-warning: #9a5b05;
+  --color-warning-soft: #fff8e5;
+  --color-danger: #c52e3a;
+  --color-danger-hover: #a9232e;
+  --color-danger-soft: #fff0f1;
+  --color-focus: #6d5dfc;
+  --shadow-sm: 0 1px 2px rgb(20 30 55 / 6%);
+  --shadow-md: 0 14px 40px rgb(20 30 55 / 10%);
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
   font-family:
     Inter,
     ui-sans-serif,
@@ -8,22 +41,29 @@
     BlinkMacSystemFont,
     'Segoe UI',
     sans-serif;
-  background: #f6f7fb;
-  color: #172033;
+  font-synthesis: none;
+  background: var(--color-canvas);
+  color: var(--color-text);
 }
 
 * {
   box-sizing: border-box;
 }
 
-html,
-body {
+html {
   min-height: 100%;
-  margin: 0;
+  scroll-behavior: smooth;
 }
 
 body {
   min-width: 20rem;
+  min-height: 100%;
+  margin: 0;
+  background: var(--color-canvas);
+  color: var(--color-text);
+  font-size: 1rem;
+  line-height: 1.5;
+  text-rendering: optimizeLegibility;
 }
 
 button,
@@ -31,4 +71,146 @@ input,
 textarea,
 select {
   font: inherit;
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+a {
+  color: var(--color-primary);
+}
+
+:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--color-focus) 45%, transparent);
+  outline-offset: 3px;
+}
+
+::selection {
+  background: #dcd8ff;
+  color: #241d74;
+}
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+.surface {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.section-heading {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.section-description {
+  margin: var(--space-1) 0 0;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+.form-grid {
+  display: grid;
+  gap: var(--space-5);
+}
+
+.form-control {
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.form-control::placeholder {
+  color: #8a95a9;
+}
+
+.form-control:hover:not(:disabled) {
+  border-color: #a9b3c5;
+}
+
+.form-control:focus-visible {
+  border-color: var(--color-focus);
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-focus) 18%, transparent);
+}
+
+.form-control[aria-invalid='true'] {
+  border-color: var(--color-danger);
+}
+
+.form-control:disabled {
+  cursor: not-allowed;
+  background: #f0f2f6;
+  color: #7c879b;
+}
+
+.table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--color-surface);
+  text-align: left;
+}
+
+.data-table th,
+.data-table td {
+  padding: 0.875rem 1rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.data-table th {
+  background: var(--color-surface-subtle);
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+.data-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.data-table .table-empty {
+  padding-block: var(--space-8);
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }

@@ -1,0 +1,77 @@
+:host {
+  display: inline-flex;
+}
+
+button {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: 0.625rem 1rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: var(--color-primary);
+  color: #fff;
+  cursor: pointer;
+  font-weight: 700;
+  line-height: 1.25;
+  box-shadow: var(--shadow-sm);
+  transition:
+    background 150ms ease,
+    border-color 150ms ease,
+    transform 150ms ease;
+}
+
+button:hover:not(:disabled) {
+  background: var(--color-primary-hover);
+}
+
+button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+:host.variant-secondary button {
+  border-color: var(--color-border-strong);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+:host.variant-secondary button:hover:not(:disabled),
+:host.variant-quiet button:hover:not(:disabled) {
+  background: var(--color-surface-subtle);
+}
+
+:host.variant-quiet button {
+  background: transparent;
+  color: var(--color-text-muted);
+  box-shadow: none;
+}
+
+:host.variant-danger button {
+  background: var(--color-danger);
+}
+
+:host.variant-danger button:hover:not(:disabled) {
+  background: var(--color-danger-hover);
+}
+
+.spinner {
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid currentcolor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 650ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

@@ -59,8 +59,26 @@ multiple origins.
 
 - `src/app/core/` owns application-wide configuration and infrastructure boundaries.
 - `src/app/features/` owns product areas and their lazy route definitions.
-- Shared visual controls belong in a narrowly scoped shared UI location when TASK-017 introduces the
-  design system; `shared/` must not become a catch-all.
+- `src/app/shared/ui/` owns presentation-only controls that are intentionally reused across feature
+  areas; `shared/` must not become a catch-all for business or API logic.
 
 The `/auth/*` and `/app/*` route trees are separate lazy boundaries. Authentication screens and the
 guard protecting `/app/*` are intentionally deferred to the tasks that own those behaviors.
+
+## Design system and application shell
+
+The UI foundation uses small standalone Angular components plus design tokens and structural classes
+in `src/styles.scss`. This approach keeps the initial bundle and dependency surface small, works with
+Angular's native accessibility semantics, and avoids committing the product to a general-purpose
+component library before feature requirements are known. Do not add an overlapping UI library
+without first documenting the missing capability and migration impact.
+
+Reusable primitives currently cover buttons, fields, badges, page headers, loading/empty/error
+states, native-modal destructive confirmation, toast feedback, and the shared icon set. Controls use
+the global color, spacing, radius, and focus tokens; status patterns pair visual color with text or an
+icon. The native `dialog` element supplies modal keyboard containment and Escape behavior, while the
+responsive application shell supplies a skip link and an Escape-closeable mobile navigation drawer.
+
+Feature routes beneath `/app` render inside the common shell. Dashboard, Links, Analytics, API Keys,
+Domains, and Account are present as navigation destinations, but their product behavior remains
+deferred to the tasks that own those features.
