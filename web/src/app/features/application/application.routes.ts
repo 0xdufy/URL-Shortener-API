@@ -12,9 +12,14 @@ export const APPLICATION_ROUTES: Routes = [
       {
         path: 'dashboard',
         title: 'Dashboard | Shortly',
+        data: {
+          eyebrow: 'Workspace overview',
+          title: 'Your link dashboard',
+          description: 'Find, review, and manage the short links owned by this account.',
+        },
         loadComponent: () =>
-          import('./foundation-overview.component').then(
-            ({ FoundationOverviewComponent }) => FoundationOverviewComponent,
+          import('./owned-links-page.component').then(
+            ({ OwnedLinksPageComponent }) => OwnedLinksPageComponent,
           ),
       },
       {
@@ -22,7 +27,29 @@ export const APPLICATION_ROUTES: Routes = [
         title: 'Links | Shortly',
         data: {
           title: 'Links',
-          description: 'Create, organize, and manage short links from one place.',
+          eyebrow: 'Link management',
+          description: 'Search, filter, and inspect every short link owned by this account.',
+        },
+        loadComponent: () =>
+          import('./owned-links-page.component').then(
+            ({ OwnedLinksPageComponent }) => OwnedLinksPageComponent,
+          ),
+      },
+      {
+        path: 'links/new',
+        title: 'Create link | Shortly',
+        data: {
+          title: 'Create a link',
+          description: 'The create-link workflow will be available here.',
+        },
+        loadComponent: loadPlaceholder,
+      },
+      {
+        path: 'links/:shortCode',
+        title: 'Link details | Shortly',
+        data: {
+          title: 'Link details',
+          description: 'The complete link details and lifecycle actions will be available here.',
         },
         loadComponent: loadPlaceholder,
       },
