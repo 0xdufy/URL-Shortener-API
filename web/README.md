@@ -55,9 +55,57 @@ keeping the production same-origin `/api` routing contract. A fully runtime-load
 be introduced with the hosting topology in Phase 15 if deployments need one immutable image across
 multiple origins.
 
+## Typed API, authentication state, and errors
+
+Application code calls `AuthenticationApiClient` and `ShortUrlsApiClient` from `src/app/core/api/`.
+Feature components must not construct API paths, attach authentication headers, enable cookie
+credentials, or duplicate transport DTOs. Contract timestamps remain ISO-8601 strings at the HTTP
+boundary so feature code can choose when and how to create `Date` values without hiding timezone
+conversion.
+
+`AuthenticationStateService` is the single in-memory owner of the access token, CSRF request token,
+expiry metadata, and authenticated user. It does not use local storage or session storage. The auth
+client stores successful register, sign-in, and refresh responses in that service. The HTTP
+interceptor sends the access token only to configured API URLs and sends browser credentials plus
+`X-XSRF-TOKEN` only for the cookie-authenticated auth operations that request them. Sign-out clears
+local state even if the remote request fails.
+
+Every API request receives an `X-Client-Request-ID` for client-side diagnostics. Backend failures are
+translated to `ApiError`, which retains the backend `traceId` separately because it is the
+authoritative server correlation value. `ApiError.kind` distinguishes authentication,
+authorization, validation, not-found, conflict, gone, rate-limited, connectivity, service, and
+unexpected failures; `isUserActionable` lets UI code choose specific recovery feedback instead of
+presenting a generic service message. Validation details are available through
+`validationMessages(field)` or `validationErrors()`, and a valid `Retry-After` header is exposed as
+`retryAfterSeconds`.
+
+A `401` from an access-token request, or `INVALID_SESSION` from refresh, clears auth state through an
+idempotent transition to `unauthorized`. Interceptors never navigate or retry authentication. The
+Phase 05 authentication experience owns refresh/bootstrap policy, safe return URLs, guards, and the
+single navigation response to that state, which prevents interceptor/guard redirect loops.
+
+### Client maintenance decision
+
+The client is manually maintained for the current compact API surface. This avoids committing a
+generator runtime, templates, and generated churn before the OpenAPI document is published as a
+stable build artifact. The trade-off is that contract drift is caught during review and integration
+verification rather than by regeneration. Reconsider generation when the API surface or number of
+consumers makes manual review unreliable.
+
+When a backend contract changes:
+
+1. Review the Swagger schema and the owning contract document in `docs/`.
+2. Update `api.models.ts` first, preserving server JSON names and nullability, then update the owning
+   typed client method.
+3. Update error classification only when the platform adds a new status or recovery category; keep
+   feature-specific error codes available through `ApiError.code`.
+4. Run `npm run format:check`, `npm run lint`, and `npm run build` from `web/`, then exercise the
+   changed endpoint against the real API. Commit no generated client artifacts.
+
 ## Source boundaries
 
-- `src/app/core/` owns application-wide configuration and infrastructure boundaries.
+- `src/app/core/` owns application-wide configuration, typed API, authentication state, and HTTP
+  infrastructure boundaries.
 - `src/app/features/` owns product areas and their lazy route definitions.
 - `src/app/shared/ui/` owns presentation-only controls that are intentionally reused across feature
   areas; `shared/` must not become a catch-all for business or API logic.
