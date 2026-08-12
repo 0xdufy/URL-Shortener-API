@@ -12,5 +12,4 @@ public interface IShortUrlService
     Task<bool> DeleteAsync(string shortCode, CancellationToken ct);
     Task<ShortUrlResponse> RestoreAsync(string shortCode, CancellationToken ct);
     Task<StatsResponse?> GetStatsAsync(string shortCode, DateTime? fromUtc, DateTime? toUtc, CancellationToken ct);
-    Task<(int statusCode, string? originalUrl)> ResolveForRedirectAsync(string shortCode, string ip, string? userAgent, string? referer, CancellationToken ct);
 }

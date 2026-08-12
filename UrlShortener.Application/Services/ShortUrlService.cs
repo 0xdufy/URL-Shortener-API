@@ -9,7 +9,6 @@ public class ShortUrlService : IShortUrlService
 {
     private const int GeneratedShortCodeLength = 8;
     private const int MaxGeneratedShortCodeAttempts = 5;
-    private static readonly TimeSpan MaximumRedirectCacheLifetime = TimeSpan.FromHours(24);
 
     private readonly IShortUrlRepository _repository;
     private readonly IShortCodeGenerator _shortCodeGenerator;
@@ -285,95 +284,6 @@ public class ShortUrlService : IShortUrlService
         };
     }
 
-    public async Task<(int statusCode, string? originalUrl)> ResolveForRedirectAsync(string shortCode, string ip, string? userAgent, string? referer, CancellationToken ct)
-    {
-        var nowUtc = _dateTimeProvider.UtcNow;
-        var cacheModel = await _shortUrlCache.GetAsync(shortCode, ct);
-
-        if (cacheModel != null)
-        {
-            if (cacheModel.ExpiresAtUtc.HasValue && cacheModel.ExpiresAtUtc.Value <= nowUtc)
-            {
-                await _shortUrlCache.RemoveAsync(shortCode, ct);
-                cacheModel = null;
-            }
-
-            if (cacheModel != null)
-            {
-                var registeredFromCache = await RegisterAccessAsync(cacheModel, nowUtc, ip, userAgent, referer, ct);
-                if (registeredFromCache)
-                {
-                    return (302, cacheModel.OriginalUrl);
-                }
-
-                await _shortUrlCache.RemoveAsync(shortCode, ct);
-            }
-        }
-
-        var entity = await _repository.GetByShortCodeAnyAsync(shortCode, ct);
-        if (entity == null || entity.IsDeleted)
-        {
-            return (404, null);
-        }
-
-        if (!entity.IsActive)
-        {
-            return (404, null);
-        }
-
-        if (entity.ExpiresAtUtc.HasValue && entity.ExpiresAtUtc.Value <= nowUtc)
-        {
-            return (410, null);
-        }
-
-        var model = CreateCacheModel(entity);
-        await SetCachedRedirectAsync(entity.ShortCode, model, nowUtc, ct);
-
-        var registered = await RegisterAccessAsync(model, nowUtc, ip, userAgent, referer, ct);
-        if (!registered)
-        {
-            await _shortUrlCache.RemoveAsync(entity.ShortCode, ct);
-            return (404, null);
-        }
-
-        return (302, entity.OriginalUrl);
-    }
-
-    private async Task<bool> RegisterAccessAsync(
-        ShortUrlCacheModel redirect,
-        DateTime nowUtc,
-        string ip,
-        string? userAgent,
-        string? referer,
-        CancellationToken ct)
-    {
-        var updated = await _repository.IncrementClickCountAsync(
-            redirect.ShortUrlId,
-            redirect.OriginalUrl,
-            redirect.ExpiresAtUtc,
-            nowUtc,
-            ct);
-        if (!updated)
-        {
-            return false;
-        }
-
-        var log = new ShortUrlAccessLog
-        {
-            Id = Guid.NewGuid(),
-            ShortUrlId = redirect.ShortUrlId,
-            AccessedAtUtc = nowUtc,
-            IpAddress = ip,
-            UserAgent = userAgent,
-            Referer = referer
-        };
-
-        await _repository.AddAccessLogAsync(log, ct);
-        await _repository.SaveChangesAsync(ct);
-
-        return true;
-    }
-
     private Guid RequireCurrentUserId()
     {
         var userId = _currentUserContext.UserId;
@@ -421,39 +331,18 @@ public class ShortUrlService : IShortUrlService
 
     private async Task CacheRedirectAsync(ShortUrl entity, DateTime nowUtc, CancellationToken ct)
     {
-        await SetCachedRedirectAsync(entity.ShortCode, CreateCacheModel(entity), nowUtc, ct);
-    }
-
-    private async Task SetCachedRedirectAsync(
-        string shortCode,
-        ShortUrlCacheModel model,
-        DateTime nowUtc,
-        CancellationToken ct)
-    {
+        var model = RedirectCachePolicy.CreateModel(entity);
         var absoluteExpirationUtc = CalculateCacheExpiration(model.ExpiresAtUtc, nowUtc);
         if (absoluteExpirationUtc <= nowUtc)
         {
             return;
         }
 
-        await _shortUrlCache.SetAsync(shortCode, model, absoluteExpirationUtc, ct);
+        await _shortUrlCache.SetAsync(entity.ShortCode, model, absoluteExpirationUtc, ct);
     }
-
-    private static ShortUrlCacheModel CreateCacheModel(ShortUrl entity) =>
-        new()
-        {
-            ShortUrlId = entity.Id,
-            OriginalUrl = entity.OriginalUrl,
-            ExpiresAtUtc = entity.ExpiresAtUtc
-        };
 
     private static DateTime CalculateCacheExpiration(DateTime? linkExpiresAtUtc, DateTime nowUtc)
-    {
-        var maximumExpirationUtc = nowUtc.Add(MaximumRedirectCacheLifetime);
-        return linkExpiresAtUtc.HasValue && linkExpiresAtUtc.Value < maximumExpirationUtc
-            ? linkExpiresAtUtc.Value
-            : maximumExpirationUtc;
-    }
+        => RedirectCachePolicy.CalculateAbsoluteExpiration(linkExpiresAtUtc, nowUtc);
 
     private ShortUrlResponse ToShortUrlResponse(ShortUrl entity)
     {

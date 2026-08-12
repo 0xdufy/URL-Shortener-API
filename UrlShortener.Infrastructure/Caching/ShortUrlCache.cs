@@ -1,7 +1,6 @@
 using System.Text.Json;
 using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Logging;
-using StackExchange.Redis;
 using UrlShortener.Application.Dtos;
 using UrlShortener.Application.Interfaces;
 
@@ -54,7 +53,7 @@ public sealed class ShortUrlCache : IShortUrlCache
             await RemoveAsync(shortCode, ct);
             return null;
         }
-        catch (Exception exception) when (IsBackendFailure(exception))
+        catch (Exception exception) when (exception is not OperationCanceledException)
         {
             _logger.LogWarning(
                 exception,
@@ -86,7 +85,7 @@ public sealed class ShortUrlCache : IShortUrlCache
 
             await _distributedCache.SetAsync(GetKey(shortCode), payload, options, ct);
         }
-        catch (Exception exception) when (IsBackendFailure(exception))
+        catch (Exception exception) when (exception is not OperationCanceledException)
         {
             _logger.LogWarning(
                 exception,
@@ -101,7 +100,7 @@ public sealed class ShortUrlCache : IShortUrlCache
         {
             await _distributedCache.RemoveAsync(GetKey(shortCode), ct);
         }
-        catch (Exception exception) when (IsBackendFailure(exception))
+        catch (Exception exception) when (exception is not OperationCanceledException)
         {
             _logger.LogWarning(
                 exception,
@@ -118,10 +117,8 @@ public sealed class ShortUrlCache : IShortUrlCache
     private static bool IsValid(ShortUrlCacheModel model) =>
         model.SchemaVersion == ShortUrlCacheModel.CurrentSchemaVersion &&
         model.ShortUrlId != Guid.Empty &&
-        !string.IsNullOrWhiteSpace(model.OriginalUrl);
-
-    private static bool IsBackendFailure(Exception exception) =>
-        exception is RedisException or TimeoutException;
+        Uri.TryCreate(model.OriginalUrl, UriKind.Absolute, out var uri) &&
+        (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
 
     private static DateTime AsUtc(DateTime value) =>
         value.Kind == DateTimeKind.Utc ? value : DateTime.SpecifyKind(value, DateTimeKind.Utc);

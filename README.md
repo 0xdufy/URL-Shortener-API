@@ -54,7 +54,7 @@ credential-free loopback endpoint `127.0.0.1:6379`; deployed environments must p
 secret sources. See [Redis Infrastructure](docs/redis.md) for local Docker commands, validated
 settings, key namespaces, connection lifetime, and outage behavior. See
 [Distributed Redirect Cache](docs/redirect-cache.md) for the shared key, payload, absolute TTL,
-invalidation, race-safety, and persistence-fallback contract.
+invalidation, race-safety, corruption recovery, and persistence-fallback contract.
 
 ### 3) Database setup
 Restore the repository-pinned EF CLI:
@@ -182,7 +182,7 @@ Status codes:
 Generated codes are eight case-sensitive base-62 characters. `originalUrl` is limited to 2,048 characters, and a supplied `expiresAtUtc` must be a future UTC timestamp ending in `Z`.
 
 ### 3) GET `/r/{shortCode}`
-Redirects to the original URL.
+Redirects to the original URL. This public route does not require authentication.
 
 Test redirect headers/status:
 

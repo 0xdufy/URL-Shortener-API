@@ -4,7 +4,7 @@ This directory is the execution plan for the product defined in `docs/PRD.md`.
 
 ## Active Phase
 
-**Phase 03 — Owned URL Lifecycle & Management API**
+**Phase 07 — Distributed Rate Limiting & API Resilience**
 
 Do not start a later phase until the active phase completion gate is satisfied, unless a documented dependency explicitly requires it.
 
@@ -47,7 +47,8 @@ Use exactly one of:
 - `management-api.md` is the finalized Angular-facing management resource, pagination/filter, error, UTC timestamp, and public URL contract.
 - `persistence.md` describes storage configuration and migration operations.
 - `redis.md` describes distributed-cache configuration, connection lifecycle, key namespaces, local setup, and outage behavior.
-- `redirect-cache.md` defines redirect payloads, TTL, invalidation, race safety, and Redis outage fallback.
+- `redirect-cache.md` defines redirect outcomes, payloads, TTL, invalidation, race safety,
+  corruption handling, access recording, and Redis outage fallback.
 - `resource-ownership.md` defines immutable ownership, legacy short-link treatment, and rules for future owned resources.
 
 ## Execution Rules

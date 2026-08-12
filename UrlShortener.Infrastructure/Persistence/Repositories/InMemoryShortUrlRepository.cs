@@ -134,7 +134,7 @@ public class InMemoryShortUrlRepository : IShortUrlRepository
         }
     }
 
-    public Task<ShortUrl?> GetByShortCodeAnyAsync(string shortCode, CancellationToken ct)
+    public Task<RedirectLookupModel?> GetRedirectByShortCodeAsync(string shortCode, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
 
@@ -143,10 +143,16 @@ public class InMemoryShortUrlRepository : IShortUrlRepository
             if (_shortUrlIdsByCode.TryGetValue(shortCode, out var id) &&
                 _shortUrlsById.TryGetValue(id, out var entity))
             {
-                return Task.FromResult<ShortUrl?>(entity);
+                return Task.FromResult<RedirectLookupModel?>(new RedirectLookupModel(
+                    entity.Id,
+                    entity.ShortCode,
+                    entity.OriginalUrl,
+                    entity.ExpiresAtUtc,
+                    entity.IsActive,
+                    entity.IsDeleted));
             }
 
-            return Task.FromResult<ShortUrl?>(null);
+            return Task.FromResult<RedirectLookupModel?>(null);
         }
     }
 

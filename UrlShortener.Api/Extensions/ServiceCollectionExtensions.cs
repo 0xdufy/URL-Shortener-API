@@ -302,6 +302,8 @@ public static class ServiceCollectionExtensions
         services.AddValidatorsFromAssemblyContaining<CreateShortUrlRequestValidator>();
 
         services.AddScoped<IShortUrlService, ShortUrlService>();
+        services.AddScoped<IRedirectResolver, RedirectResolver>();
+        services.AddScoped<IRedirectAccessRecorder, SynchronousRedirectAccessRecorder>();
         services.AddSingleton(new ShortUrlLifecycleSettings(shortUrlLifecycleOptions.SoftDeleteRetentionDays));
         services.AddSingleton(new ShortUrlContractSettings(publicUrlOptions.BaseUrl));
         services.AddScoped<ICurrentUserContext, HttpCurrentUserContext>();

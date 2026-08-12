@@ -26,12 +26,42 @@ Values are compact UTF-8 JSON with camel-case property names. Version 1 contains
 
 The ID and redirect fields are required to resolve and safely validate a redirect. Ownership,
 deletion metadata, click counts, access data, and all identity/management-only fields are not
-cached. Invalid JSON, an unsupported schema version, an empty ID, or an empty destination is
-treated as a miss and evicted on a best-effort basis.
+cached. Invalid JSON, an unsupported schema version, an empty ID, or a destination that is not an
+absolute HTTP/HTTPS URL is treated as a miss and evicted on a best-effort basis.
 
 Only active, non-deleted, non-expired links receive positive entries. Unknown, deleted, inactive,
 and expired codes are not negative-cached, so arbitrary misses cannot create persistent cache
 entries.
+
+## Resolution Contract
+
+The anonymous `GET /r/{shortCode}` route depends on the dedicated `IRedirectResolver` application
+boundary. It does not resolve a current user, owner, bearer token, or management resource. The
+resolver returns an explicit status and source instead of leaking HTTP status-code tuples into the
+application layer; the API maps those statuses to the public contract:
+
+| Persisted state | Resolution status | HTTP result |
+| --- | --- | --- |
+| Active, not deleted, and `ExpiresAtUtc` is null or later than request UTC | `Resolved` | `302 Found` |
+| Unknown, deleted, or inactive | `NotFound` | `404 NOT_FOUND` |
+| Active, not deleted, and `ExpiresAtUtc <= request UTC` | `Expired` | `410 EXPIRED` |
+
+Deletion/inactivity takes precedence over expiry, so a deleted or inactive expired row remains a
+concealed `404`. A single state evaluator classifies both cached and persisted candidates. Because
+version 1 cache values are positive-only and deliberately omit management state, a cache hit is
+still authorized by the persisted active/deleted/expiry guard before its destination is returned.
+An expired cached candidate is evicted and reloaded instead of directly returning `410`, allowing
+a concurrently extended expiry to resolve from authoritative persistence.
+
+If the persisted row changes between fallback lookup and the atomic guard, the resolver reloads
+and reclassifies it. This retry is bounded to three persistence attempts. The common concurrent
+inactive/deleted/expired/destination-change cases therefore return their current documented result
+or the new valid destination; sustained mutation churn fails closed as `404` rather than returning
+an unverified destination.
+
+Persistence projects only short URL ID/code, destination, expiry, active state, and deletion state.
+Owner identity, deletion timestamps, counters, and other management data are not materialized by
+the redirect lookup.
 
 ## Expiration Policy
 
@@ -64,17 +94,32 @@ also requires all of the following persisted state to match:
 - active and not deleted state;
 - expiry later than the access time, when present.
 
-If that guard updates no row, the API evicts the entry and reloads by short code. Consequently, a
-stale entry cannot authorize a redirect after a destination, expiry, status, deletion, or restore
-mutation, even when invalidation failed or raced with a fill. A successful mutation is visible to
-another healthy instance on its next redirect lookup; an already in-flight redirect is ordered by
-the persisted guard it completed against.
+If that guard updates no row, the API evicts the entry, reloads by short code without EF tracking,
+and applies the same state evaluator. Consequently, a stale entry cannot authorize a redirect
+after a destination, expiry, status, deletion, or restore mutation, even when invalidation failed
+or raced with a fill. A successful mutation is visible to another healthy instance on its next
+redirect lookup; an already in-flight redirect is ordered by the persisted guard it completed
+against.
+
+## Access Recording Boundary
+
+Phase 06 intentionally preserves synchronous click-count and access-log persistence. The resolver
+calls the application-level `IRedirectAccessRecorder` with the validated short URL ID, exact
+destination/expiry snapshot, access UTC, and existing client metadata. Its current implementation
+performs the atomic state guard/counter update and access-log insert exactly as before. This is the
+replacement seam for Phase 08 event publication; no queue, event contract, or asynchronous
+analytics behavior is introduced here.
+
+The controller emits a debug-level structured completion log containing short code, resolution
+status, cache/persistence source, and elapsed milliseconds. It does not log the destination or
+client metadata, and it does not introduce Phase 14 metrics or tracing.
 
 ## Redis Failure Behavior
 
 Redis connection and operation timeouts remain bounded by `RedisOptions`:
 
-- a failed cache read is logged and treated as a miss, so persistence resolves the redirect;
+- any non-cancellation cache read failure is logged and treated as a miss, so persistence resolves
+  the redirect;
 - a failed fill is logged and the uncached persisted result remains valid;
 - a failed invalidation is logged and the persisted redirect-state guard prevents a surviving
   stale value from authorizing a redirect;
@@ -95,3 +140,13 @@ disappear on every mutation and be repopulated only by a later successful redire
 For outage verification, warm a link, stop Redis, mutate the link, and resolve it while Redis is
 unavailable. The request must use persisted state. After Redis returns, a surviving stale value
 must fail the persisted state guard, be replaced, and never return the old destination.
+
+TASK-025 verification on 2026-08-12 exercised a miss followed by a shared-cache hit (`302`), a
+malformed payload that was evicted and repopulated (`302` with an approximately 24-hour TTL), a
+stale inactive row (`404`), deleted and unknown rows (`404`), and an expired row (`410`). A second
+API instance configured against unused Redis port 6399 still resolved the valid persisted row with
+`302`. Four successful requests produced exactly four click-count increments and four access-log
+rows, confirming analytics-write behavior remained synchronous. All temporary database rows,
+access logs, Redis keys, and API processes were removed afterward. A final smoke test after the
+redirect-only persistence projection repeated miss/hit `302`, the approximately 24-hour TTL, and
+expired `410` successfully.

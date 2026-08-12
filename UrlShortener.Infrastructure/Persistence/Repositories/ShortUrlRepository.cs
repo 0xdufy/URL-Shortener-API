@@ -123,10 +123,19 @@ public class ShortUrlRepository : IShortUrlRepository
                 ct);
     }
 
-    public Task<ShortUrl?> GetByShortCodeAnyAsync(string shortCode, CancellationToken ct)
+    public Task<RedirectLookupModel?> GetRedirectByShortCodeAsync(string shortCode, CancellationToken ct)
     {
         return _dbContext.ShortUrls
-            .FirstOrDefaultAsync(x => EF.Functions.Collate(x.ShortCode, CaseSensitiveCollation) == shortCode, ct);
+            .AsNoTracking()
+            .Where(x => EF.Functions.Collate(x.ShortCode, CaseSensitiveCollation) == shortCode)
+            .Select(x => new RedirectLookupModel(
+                x.Id,
+                x.ShortCode,
+                x.OriginalUrl,
+                x.ExpiresAtUtc,
+                x.IsActive,
+                x.IsDeleted))
+            .FirstOrDefaultAsync(ct);
     }
 
     public async Task<List<(DateTime DateUtc, int Clicks)>> GetDailyClicksAsync(Guid shortUrlId, DateTime fromUtc, DateTime toUtc, CancellationToken ct)

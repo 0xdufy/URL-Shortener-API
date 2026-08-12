@@ -1,18 +1,26 @@
+using System.Diagnostics;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using UrlShortener.Api.Models;
+using UrlShortener.Application.Dtos;
 using UrlShortener.Application.Interfaces;
 
 namespace UrlShortener.Api.Controllers;
 
 [ApiController]
+[AllowAnonymous]
 [Route("r")]
 public class RedirectController : ControllerBase
 {
-    private readonly IShortUrlService _shortUrlService;
+    private readonly IRedirectResolver _redirectResolver;
+    private readonly ILogger<RedirectController> _logger;
 
-    public RedirectController(IShortUrlService shortUrlService)
+    public RedirectController(
+        IRedirectResolver redirectResolver,
+        ILogger<RedirectController> logger)
     {
-        _shortUrlService = shortUrlService;
+        _redirectResolver = redirectResolver;
+        _logger = logger;
     }
 
     [HttpGet("{shortCode}")]
@@ -22,14 +30,27 @@ public class RedirectController : ControllerBase
         var userAgent = Request.Headers.UserAgent.ToString();
         var referer = Request.Headers.Referer.ToString();
 
-        var result = await _shortUrlService.ResolveForRedirectAsync(shortCode, ip, string.IsNullOrWhiteSpace(userAgent) ? null : userAgent, string.IsNullOrWhiteSpace(referer) ? null : referer, ct);
+        var startedAt = Stopwatch.GetTimestamp();
+        var result = await _redirectResolver.ResolveAsync(
+            shortCode,
+            ip,
+            string.IsNullOrWhiteSpace(userAgent) ? null : userAgent,
+            string.IsNullOrWhiteSpace(referer) ? null : referer,
+            ct);
 
-        if (result.statusCode == StatusCodes.Status302Found && result.originalUrl != null)
+        _logger.LogDebug(
+            "Redirect resolution for {ShortCode} completed with {ResolutionStatus} from {ResolutionSource} in {ElapsedMilliseconds} ms.",
+            shortCode,
+            result.Status,
+            result.Source,
+            Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds);
+
+        if (result.Status == RedirectResolutionStatus.Resolved && result.OriginalUrl != null)
         {
-            return Redirect(result.originalUrl);
+            return Redirect(result.OriginalUrl);
         }
 
-        if (result.statusCode == StatusCodes.Status410Gone)
+        if (result.Status == RedirectResolutionStatus.Expired)
         {
             return StatusCode(StatusCodes.Status410Gone, ApiErrorFactory.Create(HttpContext, "EXPIRED", "Short URL has expired."));
         }
