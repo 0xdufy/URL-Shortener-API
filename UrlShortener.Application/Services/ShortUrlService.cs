@@ -1,3 +1,6 @@
+using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
 using UrlShortener.Application.Dtos;
 using UrlShortener.Application.Exceptions;
 using UrlShortener.Application.Interfaces;
@@ -17,6 +20,7 @@ public class ShortUrlService : IShortUrlService
     private readonly ICurrentUserContext _currentUserContext;
     private readonly ShortUrlLifecycleSettings _lifecycleSettings;
     private readonly ShortUrlContractSettings _contractSettings;
+    private readonly IdempotencySettings _idempotencySettings;
 
     public ShortUrlService(
         IShortUrlRepository repository,
@@ -25,7 +29,8 @@ public class ShortUrlService : IShortUrlService
         IDateTimeProvider dateTimeProvider,
         ICurrentUserContext currentUserContext,
         ShortUrlLifecycleSettings lifecycleSettings,
-        ShortUrlContractSettings contractSettings)
+        ShortUrlContractSettings contractSettings,
+        IdempotencySettings idempotencySettings)
     {
         _repository = repository;
         _shortCodeGenerator = shortCodeGenerator;
@@ -34,6 +39,7 @@ public class ShortUrlService : IShortUrlService
         _currentUserContext = currentUserContext;
         _lifecycleSettings = lifecycleSettings;
         _contractSettings = contractSettings;
+        _idempotencySettings = idempotencySettings;
     }
 
     public async Task<ShortUrlListResponse> ListAsync(ShortUrlListQuery query, CancellationToken ct)
@@ -92,20 +98,28 @@ public class ShortUrlService : IShortUrlService
         };
     }
 
-    public async Task<ShortUrlResponse> CreateAsync(CreateShortUrlRequest req, string clientIp, CancellationToken ct)
+    public async Task<ShortUrlResponse> CreateAsync(
+        CreateShortUrlRequest req,
+        string clientIp,
+        string? idempotencyKey,
+        CancellationToken ct)
     {
+        _ = clientIp;
         var ownerId = RequireCurrentUserId();
         var nowUtc = _dateTimeProvider.UtcNow;
+        var idempotency = CreateIdempotencyContext(ownerId, req, idempotencyKey, nowUtc);
         ShortUrl entity;
 
         if (!string.IsNullOrWhiteSpace(req.CustomAlias))
         {
             entity = CreateEntity(req, req.CustomAlias, ownerId, nowUtc);
-            var creationResult = await _repository.TryCreateAsync(entity, ct);
-            if (creationResult == ShortUrlCreationResult.ShortCodeConflict)
+            var creationResult = await TryCreateAsync(entity, idempotency, ct);
+            if (creationResult.Outcome == IdempotentShortUrlCreationOutcome.ShortCodeConflict)
             {
                 throw new AliasConflictException("Custom alias already exists.");
             }
+
+            entity = ResolveCreatedEntity(creationResult, entity);
         }
         else
         {
@@ -115,10 +129,17 @@ public class ShortUrlService : IShortUrlService
             {
                 var generatedCode = _shortCodeGenerator.Generate(GeneratedShortCodeLength);
                 var candidate = CreateEntity(req, generatedCode, ownerId, nowUtc);
-                var creationResult = await _repository.TryCreateAsync(candidate, ct);
-                if (creationResult == ShortUrlCreationResult.Created)
+                var creationResult = await TryCreateAsync(candidate, idempotency, ct);
+                if (creationResult.Outcome == IdempotentShortUrlCreationOutcome.RequestConflict)
                 {
-                    entity = candidate;
+                    throw new IdempotencyKeyReusedException();
+                }
+
+                if (creationResult.Outcome is
+                    IdempotentShortUrlCreationOutcome.Created or
+                    IdempotentShortUrlCreationOutcome.Existing)
+                {
+                    entity = ResolveCreatedEntity(creationResult, candidate);
                     break;
                 }
             }
@@ -135,6 +156,75 @@ public class ShortUrlService : IShortUrlService
 
         return response;
     }
+
+    private async Task<IdempotentShortUrlCreationResult> TryCreateAsync(
+        ShortUrl entity,
+        ShortUrlIdempotencyContext? idempotency,
+        CancellationToken ct)
+    {
+        if (idempotency != null)
+        {
+            return await _repository.TryCreateIdempotentAsync(entity, idempotency, ct);
+        }
+
+        var outcome = await _repository.TryCreateAsync(entity, ct);
+        return outcome == ShortUrlCreationResult.Created
+            ? new IdempotentShortUrlCreationResult(IdempotentShortUrlCreationOutcome.Created, entity)
+            : new IdempotentShortUrlCreationResult(IdempotentShortUrlCreationOutcome.ShortCodeConflict);
+    }
+
+    private static ShortUrl ResolveCreatedEntity(
+        IdempotentShortUrlCreationResult result,
+        ShortUrl candidate)
+    {
+        if (result.Outcome == IdempotentShortUrlCreationOutcome.RequestConflict)
+        {
+            throw new IdempotencyKeyReusedException();
+        }
+
+        return result.Outcome switch
+        {
+            IdempotentShortUrlCreationOutcome.Created => candidate,
+            IdempotentShortUrlCreationOutcome.Existing when result.ShortUrl != null => result.ShortUrl,
+            _ => throw new InvalidOperationException("The idempotent creation result is inconsistent.")
+        };
+    }
+
+    private ShortUrlIdempotencyContext? CreateIdempotencyContext(
+        Guid ownerId,
+        CreateShortUrlRequest request,
+        string? idempotencyKey,
+        DateTime nowUtc)
+    {
+        if (idempotencyKey == null)
+        {
+            return null;
+        }
+
+        return new ShortUrlIdempotencyContext(
+            ownerId,
+            HashText(idempotencyKey),
+            HashCreateRequest(request),
+            nowUtc,
+            nowUtc.AddHours(_idempotencySettings.RetentionHours));
+    }
+
+    private static string HashCreateRequest(CreateShortUrlRequest request)
+    {
+        var alias = string.IsNullOrWhiteSpace(request.CustomAlias) ? string.Empty : request.CustomAlias;
+        var expiresAtTicks = request.ExpiresAtUtc?.Ticks.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
+        var canonicalPayload = string.Join(
+            '\n',
+            "v1",
+            Convert.ToBase64String(Encoding.UTF8.GetBytes(request.OriginalUrl)),
+            Convert.ToBase64String(Encoding.UTF8.GetBytes(alias)),
+            expiresAtTicks);
+
+        return HashText(canonicalPayload);
+    }
+
+    private static string HashText(string value) =>
+        Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
 
     private static ShortUrl CreateEntity(
         CreateShortUrlRequest request,

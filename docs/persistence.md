@@ -14,12 +14,14 @@ The committed `appsettings.json` intentionally contains no connection string and
 |---|---|---|
 | `Storage:UseInMemory` | Selects the development-only repository or SQL Server | Must be `false` outside Development |
 | `ConnectionStrings:SqlServer` | SQL Server connection | Required when in-memory storage is disabled |
-| `Persistence:MaxRetryCount` | Transient SQL retry count | 0 through 10 |
-| `Persistence:MaxRetryDelaySeconds` | Maximum delay between transient retries | 1 through 60 seconds |
 | `Persistence:CommandTimeoutSeconds` | SQL command timeout | 1 through 300 seconds |
+| `Idempotency:RetentionHours` | Caller-scoped URL-create replay retention | 1 through 168 hours |
 | `RateLimiting:<Policy>` | Redis-backed endpoint quota policy | See `rate-limiting.md` for per-algorithm bounds |
 
-Options validation runs during startup. Invalid values fail with the full configuration key and permitted range. SQL retry behavior is bounded and only applies to errors the SQL Server provider identifies as transient.
+Options validation runs during startup. Invalid values fail with the full configuration key and
+permitted range. Automatic SQL retries are intentionally disabled because commit ambiguity can
+duplicate non-idempotent writes. Retry-capable URL creation uses its database-backed idempotency
+contract instead; see [Idempotency and Request Resilience](idempotency-request-resilience.md).
 
 ## Migration Convention
 

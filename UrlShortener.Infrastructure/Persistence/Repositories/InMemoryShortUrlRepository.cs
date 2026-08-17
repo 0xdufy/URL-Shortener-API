@@ -9,6 +9,8 @@ public class InMemoryShortUrlRepository : IShortUrlRepository
     private readonly object _sync = new();
     private readonly Dictionary<Guid, ShortUrl> _shortUrlsById = new();
     private readonly Dictionary<string, Guid> _shortUrlIdsByCode = new(StringComparer.Ordinal);
+    private readonly Dictionary<(Guid OwnerId, string KeyHash), ShortUrlCreationIdempotencyRecord>
+        _idempotencyRecords = new();
     private readonly List<ShortUrlAccessLog> _accessLogs = new();
 
     public Task<ShortUrlListResult> ListOwnedAsync(ShortUrlListCriteria criteria, CancellationToken ct)
@@ -99,6 +101,57 @@ public class InMemoryShortUrlRepository : IShortUrlRepository
         }
     }
 
+    public Task<IdempotentShortUrlCreationResult> TryCreateIdempotentAsync(
+        ShortUrl entity,
+        ShortUrlIdempotencyContext idempotency,
+        CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+
+        lock (_sync)
+        {
+            var expiredKeys = _idempotencyRecords
+                .Where(x => x.Value.ExpiresAtUtc <= idempotency.CreatedAtUtc)
+                .Select(x => x.Key)
+                .ToList();
+            foreach (var expiredKey in expiredKeys)
+            {
+                _idempotencyRecords.Remove(expiredKey);
+            }
+
+            var scopedKey = (idempotency.OwnerId, idempotency.KeyHash);
+            if (_idempotencyRecords.TryGetValue(scopedKey, out var existing))
+            {
+                return Task.FromResult(ResolveIdempotencyRecord(existing, idempotency.RequestHash));
+            }
+
+            if (_shortUrlIdsByCode.ContainsKey(entity.ShortCode))
+            {
+                return Task.FromResult(new IdempotentShortUrlCreationResult(
+                    IdempotentShortUrlCreationOutcome.ShortCodeConflict));
+            }
+
+            var record = new ShortUrlCreationIdempotencyRecord(
+                idempotency.OwnerId,
+                idempotency.KeyHash,
+                idempotency.RequestHash,
+                entity.Id,
+                idempotency.CreatedAtUtc,
+                idempotency.ExpiresAtUtc)
+            {
+                Id = Guid.NewGuid()
+            };
+
+            _shortUrlsById.Add(entity.Id, entity);
+            _shortUrlIdsByCode.Add(entity.ShortCode, entity.Id);
+            _idempotencyRecords.Add(scopedKey, record);
+
+            return Task.FromResult(new IdempotentShortUrlCreationResult(
+                IdempotentShortUrlCreationOutcome.Created,
+                entity));
+        }
+    }
+
     public Task<ShortUrl?> GetOwnedByShortCodeNotDeletedAsync(string shortCode, Guid ownerId, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
@@ -158,6 +211,8 @@ public class InMemoryShortUrlRepository : IShortUrlRepository
 
     public Task<List<(DateTime DateUtc, int Clicks)>> GetDailyClicksAsync(Guid shortUrlId, DateTime fromUtc, DateTime toUtc, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
+
         lock (_sync)
         {
             var result = _accessLogs
@@ -208,6 +263,8 @@ public class InMemoryShortUrlRepository : IShortUrlRepository
 
     public Task AddAccessLogAsync(ShortUrlAccessLog log, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
+
         lock (_sync)
         {
             _accessLogs.Add(log);
@@ -218,7 +275,25 @@ public class InMemoryShortUrlRepository : IShortUrlRepository
 
     public Task SaveChangesAsync(CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
         return Task.CompletedTask;
+    }
+
+    private IdempotentShortUrlCreationResult ResolveIdempotencyRecord(
+        ShortUrlCreationIdempotencyRecord record,
+        string requestHash)
+    {
+        if (!string.Equals(record.RequestHash, requestHash, StringComparison.Ordinal))
+        {
+            return new IdempotentShortUrlCreationResult(
+                IdempotentShortUrlCreationOutcome.RequestConflict);
+        }
+
+        return _shortUrlsById.TryGetValue(record.ShortUrlId, out var shortUrl)
+            ? new IdempotentShortUrlCreationResult(
+                IdempotentShortUrlCreationOutcome.Existing,
+                shortUrl)
+            : throw new InvalidOperationException("An idempotency record references a missing short URL.");
     }
 
     private static IOrderedEnumerable<ShortUrl> ApplyOrdering(

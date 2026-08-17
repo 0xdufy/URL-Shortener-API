@@ -92,7 +92,7 @@ Supported query values are documented in Swagger. The defaults are page `1`, pag
 | Operation | Request | Success | Expected errors |
 |---|---|---|---|
 | `GET /api/v1/short-urls` | Query parameters | `200` collection | `400`, `401`, `403` |
-| `POST /api/v1/short-urls` | `{ originalUrl, customAlias?, expiresAtUtc? }` | `201` resource | `400`, `401`, `403`, `409`, `429`, `500` |
+| `POST /api/v1/short-urls` | Optional `Idempotency-Key`; `{ originalUrl, customAlias?, expiresAtUtc? }` | `201` resource | `400`, `401`, `403`, `409`, `413`, `429`, `500`, `504` |
 | `GET /api/v1/short-urls/{shortCode}` | None | `200` resource | `401`, `403`, `404` |
 | `PUT /api/v1/short-urls/{shortCode}` | `{ originalUrl, expiresAtUtc }` | `200` resource | `400`, `401`, `403`, `404` |
 | `PATCH /api/v1/short-urls/{shortCode}/status` | `{ isActive }` | `200` resource | `400`, `401`, `403`, `404` |
@@ -100,6 +100,12 @@ Supported query values are documented in Swagger. The defaults are page `1`, pag
 | `POST /api/v1/short-urls/{shortCode}/restore` | None | `200` resource | `401`, `403`, `404`, `409`, `410` |
 
 The create response includes a relative management `Location` header: `/api/v1/short-urls/{shortCode}`. Aliases are immutable after creation. `PUT` replaces the destination and expiry; a null or omitted `expiresAtUtc` clears expiry.
+
+Retry-capable clients should supply a fresh 16-128 character `Idempotency-Key` for each logical
+create. Repeating the same accepted payload and key returns the same logical resource with `201`;
+changing material payload fields returns `409 IDEMPOTENCY_KEY_REUSED`. Keys are authenticated-user
+scoped and retained for 24 hours by default. See
+[Idempotency and Request Resilience](idempotency-request-resilience.md).
 
 Every management operation also has a distributed authenticated-user policy and may return
 `429 RATE_LIMITED` or `503 RATE_LIMITING_UNAVAILABLE`. Creation overrides that general policy with

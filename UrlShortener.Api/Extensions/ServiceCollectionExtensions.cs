@@ -46,6 +46,8 @@ public static class ServiceCollectionExtensions
         var shortUrlLifecycleSection = configuration.GetRequiredSection(ShortUrlLifecycleOptions.SectionName);
         var publicUrlSection = configuration.GetRequiredSection(PublicUrlOptions.SectionName);
         var redisSection = configuration.GetRequiredSection(RedisOptions.SectionName);
+        var idempotencySection = configuration.GetRequiredSection(IdempotencyOptions.SectionName);
+        var requestLimitsSection = configuration.GetRequiredSection(RequestLimitsOptions.SectionName);
 
         var storageOptions = storageSection.Get<StorageOptions>()
             ?? throw new InvalidOperationException($"Configuration section '{StorageOptions.SectionName}' is invalid.");
@@ -102,9 +104,38 @@ public static class ServiceCollectionExtensions
 
         services.AddOptions<PersistenceOptions>()
             .Bind(persistenceSection)
-            .Validate(options => options.MaxRetryCount is >= 0 and <= 10, "Persistence:MaxRetryCount must be between 0 and 10.")
-            .Validate(options => options.MaxRetryDelaySeconds is >= 1 and <= 60, "Persistence:MaxRetryDelaySeconds must be between 1 and 60.")
             .Validate(options => options.CommandTimeoutSeconds is >= 1 and <= 300, "Persistence:CommandTimeoutSeconds must be between 1 and 300.")
+            .ValidateOnStart();
+
+        var idempotencyOptions = idempotencySection.Get<IdempotencyOptions>()
+            ?? throw new InvalidOperationException($"Configuration section '{IdempotencyOptions.SectionName}' is invalid.");
+        services.AddOptions<IdempotencyOptions>()
+            .Bind(idempotencySection)
+            .Validate(
+                options => options.RetentionHours is >= 1 and <= 168,
+                "Idempotency:RetentionHours must be between 1 and 168.")
+            .ValidateOnStart();
+
+        services.AddOptions<RequestLimitsOptions>()
+            .Bind(requestLimitsSection)
+            .Validate(
+                options => options.MaxRequestBodyBytes is >= 8_192 and <= 1_048_576,
+                "RequestLimits:MaxRequestBodyBytes must be between 8192 and 1048576.")
+            .Validate(
+                options => options.MaxRequestLineBytes is >= 2_048 and <= 32_768,
+                "RequestLimits:MaxRequestLineBytes must be between 2048 and 32768.")
+            .Validate(
+                options => options.MaxRequestHeadersTotalBytes is >= 8_192 and <= 65_536,
+                "RequestLimits:MaxRequestHeadersTotalBytes must be between 8192 and 65536.")
+            .Validate(
+                options => options.MaxRequestHeaderCount is >= 16 and <= 128,
+                "RequestLimits:MaxRequestHeaderCount must be between 16 and 128.")
+            .Validate(
+                options => options.RequestHeadersTimeoutSeconds is >= 5 and <= 60,
+                "RequestLimits:RequestHeadersTimeoutSeconds must be between 5 and 60.")
+            .Validate(
+                options => options.RequestTimeoutSeconds is >= 5 and <= 120,
+                "RequestLimits:RequestTimeoutSeconds must be between 5 and 120.")
             .ValidateOnStart();
 
         services.AddOptions<DistributedRateLimitingOptions>()
@@ -210,10 +241,6 @@ public static class ServiceCollectionExtensions
                     connectionString,
                     sqlOptions =>
                     {
-                        sqlOptions.EnableRetryOnFailure(
-                            persistenceOptions.MaxRetryCount,
-                            TimeSpan.FromSeconds(persistenceOptions.MaxRetryDelaySeconds),
-                            errorNumbersToAdd: null);
                         sqlOptions.CommandTimeout(persistenceOptions.CommandTimeoutSeconds);
                     });
             });
@@ -348,6 +375,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IRedirectAccessRecorder, SynchronousRedirectAccessRecorder>();
         services.AddSingleton(new ShortUrlLifecycleSettings(shortUrlLifecycleOptions.SoftDeleteRetentionDays));
         services.AddSingleton(new ShortUrlContractSettings(publicUrlOptions.BaseUrl));
+        services.AddSingleton(new IdempotencySettings(idempotencyOptions.RetentionHours));
         services.AddScoped<ICurrentUserContext, HttpCurrentUserContext>();
         if (storageOptions.UseInMemory)
         {
@@ -511,7 +539,11 @@ public static class ServiceCollectionExtensions
         context.Response.StatusCode = statusCode;
         context.Response.ContentType = "application/json";
         var response = ApiErrorFactory.Create(context, code, message);
-        await JsonSerializer.SerializeAsync(context.Response.Body, response, JsonOptions);
+        await JsonSerializer.SerializeAsync(
+            context.Response.Body,
+            response,
+            JsonOptions,
+            context.RequestAborted);
     }
 
     public static WebApplicationBuilder AddSerilogLogging(this WebApplicationBuilder builder)

@@ -18,6 +18,8 @@ namespace UrlShortener.Api.Controllers;
 [Route("api/v1/short-urls")]
 public class ShortUrlsController : ControllerBase
 {
+    private const int CreateRequestBodyLimitBytes = 8 * 1024;
+
     private readonly IShortUrlService _shortUrlService;
     private readonly IValidator<CreateShortUrlRequest> _createValidator;
     private readonly IValidator<UpdateShortUrlRequest> _updateValidator;
@@ -57,22 +59,29 @@ public class ShortUrlsController : ControllerBase
     }
 
     [HttpPost]
+    [RequestSizeLimit(CreateRequestBodyLimitBytes)]
     [DistributedRateLimit(RateLimitPolicy.UrlCreation)]
     [Consumes("application/json")]
     [ProducesResponseType(typeof(ShortUrlResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status413PayloadTooLarge)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status429TooManyRequests)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status500InternalServerError)]
-    public async Task<IActionResult> Create([FromBody] CreateShortUrlRequest? request, CancellationToken ct)
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status504GatewayTimeout)]
+    public async Task<IActionResult> Create(
+        [FromBody] CreateShortUrlRequest? request,
+        [FromHeader(Name = "Idempotency-Key")] string? idempotencyKey,
+        CancellationToken ct)
     {
         var ip = GetClientIp();
         var validRequest = EnsureValidModelAndBody(request);
+        var validIdempotencyKey = ValidateIdempotencyKey(idempotencyKey);
 
         await _createValidator.ValidateAndThrowAsync(validRequest, ct);
 
-        var response = await _shortUrlService.CreateAsync(validRequest, ip, ct);
+        var response = await _shortUrlService.CreateAsync(validRequest, ip, validIdempotencyKey, ct);
 
         return Created($"/api/v1/short-urls/{response.ShortCode}", response);
     }
@@ -181,6 +190,29 @@ public class ShortUrlsController : ControllerBase
     {
         return ClientIpAddress.Normalize(HttpContext.Connection.RemoteIpAddress);
     }
+
+    private static string? ValidateIdempotencyKey(string? value)
+    {
+        if (value == null)
+        {
+            return null;
+        }
+
+        if (value.Length is < 16 or > 128 || !value.All(IsIdempotencyKeyCharacter))
+        {
+            throw new ValidationException(new[]
+            {
+                new FluentValidation.Results.ValidationFailure(
+                    "idempotencyKey",
+                    "Idempotency-Key must be one 16-128 character value containing only ASCII letters, digits, '.', '_', ':', or '-'.")
+            });
+        }
+
+        return value;
+    }
+
+    private static bool IsIdempotencyKeyCharacter(char value) =>
+        value is >= 'A' and <= 'Z' or >= 'a' and <= 'z' or >= '0' and <= '9' or '.' or '_' or ':' or '-';
 
     private T EnsureValidModelAndBody<T>(T? request) where T : class
     {

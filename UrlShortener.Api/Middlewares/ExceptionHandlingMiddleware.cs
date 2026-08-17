@@ -29,6 +29,12 @@ public class ExceptionHandlingMiddleware
         {
             await _next(context);
         }
+        catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
+        {
+            _logger.LogDebug(
+                "Request {TraceId} was cancelled before completion.",
+                context.TraceIdentifier);
+        }
         catch (Exception exception)
         {
             await HandleAsync(context, exception);
@@ -53,11 +59,24 @@ public class ExceptionHandlingMiddleware
                 Message = x.ErrorMessage
             }).ToList();
         }
+        else if (exception is Microsoft.AspNetCore.Http.BadHttpRequestException badRequestException &&
+            badRequestException.StatusCode == StatusCodes.Status413PayloadTooLarge)
+        {
+            statusCode = StatusCodes.Status413PayloadTooLarge;
+            code = "REQUEST_TOO_LARGE";
+            message = "The request body exceeds the permitted size.";
+        }
         else if (exception is AliasConflictException)
         {
             statusCode = StatusCodes.Status409Conflict;
             code = "ALIAS_CONFLICT";
             message = "Alias already exists.";
+        }
+        else if (exception is IdempotencyKeyReusedException)
+        {
+            statusCode = StatusCodes.Status409Conflict;
+            code = "IDEMPOTENCY_KEY_REUSED";
+            message = "The idempotency key was already used with different request content.";
         }
         else if (exception is NotFoundException)
         {
@@ -165,7 +184,7 @@ public class ExceptionHandlingMiddleware
         var response = ApiErrorFactory.Create(context, code, message, details);
 
         var json = JsonSerializer.Serialize(response, JsonOptions);
-        await context.Response.WriteAsync(json);
+        await context.Response.WriteAsync(json, context.RequestAborted);
     }
 
 }

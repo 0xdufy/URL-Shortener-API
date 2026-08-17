@@ -14,6 +14,8 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Guid
 
     public DbSet<ShortUrl> ShortUrls => Set<ShortUrl>();
     public DbSet<ShortUrlAccessLog> ShortUrlAccessLogs => Set<ShortUrlAccessLog>();
+    public DbSet<ShortUrlCreationIdempotencyRecord> ShortUrlCreationIdempotencyRecords =>
+        Set<ShortUrlCreationIdempotencyRecord>();
     public DbSet<RefreshSession> RefreshSessions => Set<RefreshSession>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)

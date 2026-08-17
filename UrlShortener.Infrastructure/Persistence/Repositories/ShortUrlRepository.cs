@@ -11,6 +11,8 @@ public class ShortUrlRepository : IShortUrlRepository
     private const string CaseSensitiveCollation = "Latin1_General_CS_AS";
     private const string BinaryCollation = "Latin1_General_100_BIN2";
     private const string ShortCodeUniqueIndexName = "IX_ShortUrls_ShortCode";
+    private const string IdempotencyUniqueIndexName =
+        "IX_ShortUrlCreationIdempotencyRecords_OwnerId_KeyHash";
     private readonly AppDbContext _dbContext;
 
     public ShortUrlRepository(AppDbContext dbContext)
@@ -101,6 +103,65 @@ public class ShortUrlRepository : IShortUrlRepository
         {
             _dbContext.Entry(entity).State = EntityState.Detached;
             return ShortUrlCreationResult.ShortCodeConflict;
+        }
+    }
+
+    public async Task<IdempotentShortUrlCreationResult> TryCreateIdempotentAsync(
+        ShortUrl entity,
+        ShortUrlIdempotencyContext idempotency,
+        CancellationToken ct)
+    {
+        await DeleteExpiredIdempotencyRecordsAsync(idempotency.CreatedAtUtc, ct);
+
+        var existing = await FindIdempotencyRecordAsync(idempotency, ct);
+        if (existing != null)
+        {
+            return ResolveIdempotencyRecord(existing, idempotency.RequestHash);
+        }
+
+        var record = new ShortUrlCreationIdempotencyRecord(
+            idempotency.OwnerId,
+            idempotency.KeyHash,
+            idempotency.RequestHash,
+            entity.Id,
+            idempotency.CreatedAtUtc,
+            idempotency.ExpiresAtUtc)
+        {
+            Id = Guid.NewGuid()
+        };
+
+        await _dbContext.ShortUrls.AddAsync(entity, ct);
+        await _dbContext.ShortUrlCreationIdempotencyRecords.AddAsync(record, ct);
+
+        try
+        {
+            await _dbContext.SaveChangesAsync(ct);
+            return new IdempotentShortUrlCreationResult(
+                IdempotentShortUrlCreationOutcome.Created,
+                entity);
+        }
+        catch (DbUpdateException exception) when (IsShortCodeConflict(exception))
+        {
+            DetachFailedIdempotentCreation(entity, record);
+            existing = await FindIdempotencyRecordAsync(idempotency, ct);
+            if (existing != null)
+            {
+                return ResolveIdempotencyRecord(existing, idempotency.RequestHash);
+            }
+
+            return new IdempotentShortUrlCreationResult(
+                IdempotentShortUrlCreationOutcome.ShortCodeConflict);
+        }
+        catch (DbUpdateException exception) when (IsIdempotencyConflict(exception))
+        {
+            DetachFailedIdempotentCreation(entity, record);
+            existing = await FindIdempotencyRecordAsync(idempotency, ct);
+            if (existing == null)
+            {
+                throw;
+            }
+
+            return ResolveIdempotencyRecord(existing, idempotency.RequestHash);
         }
     }
 
@@ -199,6 +260,61 @@ public class ShortUrlRepository : IShortUrlRepository
             .Any(error =>
                 error.Number is 2601 or 2627 &&
                 error.Message.Contains(ShortCodeUniqueIndexName, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private Task<ShortUrlCreationIdempotencyRecord?> FindIdempotencyRecordAsync(
+        ShortUrlIdempotencyContext idempotency,
+        CancellationToken ct)
+    {
+        return _dbContext.ShortUrlCreationIdempotencyRecords
+            .AsNoTracking()
+            .Include(x => x.ShortUrl)
+            .FirstOrDefaultAsync(
+                x => x.OwnerId == idempotency.OwnerId &&
+                    x.KeyHash == idempotency.KeyHash &&
+                    x.ExpiresAtUtc > idempotency.CreatedAtUtc,
+                ct);
+    }
+
+    private async Task DeleteExpiredIdempotencyRecordsAsync(DateTime nowUtc, CancellationToken ct)
+    {
+        await _dbContext.ShortUrlCreationIdempotencyRecords
+            .Where(x => x.ExpiresAtUtc <= nowUtc)
+            .ExecuteDeleteAsync(ct);
+    }
+
+    private static IdempotentShortUrlCreationResult ResolveIdempotencyRecord(
+        ShortUrlCreationIdempotencyRecord record,
+        string requestHash)
+    {
+        return string.Equals(record.RequestHash, requestHash, StringComparison.Ordinal)
+            ? new IdempotentShortUrlCreationResult(
+                IdempotentShortUrlCreationOutcome.Existing,
+                record.ShortUrl)
+            : new IdempotentShortUrlCreationResult(
+                IdempotentShortUrlCreationOutcome.RequestConflict);
+    }
+
+    private void DetachFailedIdempotentCreation(
+        ShortUrl entity,
+        ShortUrlCreationIdempotencyRecord record)
+    {
+        _dbContext.Entry(record).State = EntityState.Detached;
+        _dbContext.Entry(entity).State = EntityState.Detached;
+    }
+
+    private static bool IsIdempotencyConflict(DbUpdateException exception)
+    {
+        if (exception.InnerException is not SqlException sqlException)
+        {
+            return false;
+        }
+
+        return sqlException.Errors
+            .Cast<SqlError>()
+            .Any(error =>
+                error.Number is 2601 or 2627 &&
+                error.Message.Contains(IdempotencyUniqueIndexName, StringComparison.OrdinalIgnoreCase));
     }
 
     private static IOrderedQueryable<ShortUrl> ApplyOrdering(

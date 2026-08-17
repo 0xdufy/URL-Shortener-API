@@ -4,11 +4,43 @@ using UrlShortener.Api.Middlewares;
 using UrlShortener.Api.OpenApi;
 using UrlShortener.Api.Models;
 using UrlShortener.Api.RateLimiting;
+using Microsoft.AspNetCore.Http.Timeouts;
 using Microsoft.OpenApi;
 using Microsoft.Extensions.Options;
 using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
+
+var requestLimits = builder.Configuration
+    .GetRequiredSection(RequestLimitsOptions.SectionName)
+    .Get<RequestLimitsOptions>()
+    ?? throw new InvalidOperationException($"Configuration section '{RequestLimitsOptions.SectionName}' is invalid.");
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.Limits.MaxRequestBodySize = requestLimits.MaxRequestBodyBytes;
+    options.Limits.MaxRequestLineSize = requestLimits.MaxRequestLineBytes;
+    options.Limits.MaxRequestHeadersTotalSize = requestLimits.MaxRequestHeadersTotalBytes;
+    options.Limits.MaxRequestHeaderCount = requestLimits.MaxRequestHeaderCount;
+    options.Limits.RequestHeadersTimeout = TimeSpan.FromSeconds(requestLimits.RequestHeadersTimeoutSeconds);
+});
+builder.Services.AddRequestTimeouts(options =>
+{
+    options.DefaultPolicy = new RequestTimeoutPolicy
+    {
+        Timeout = TimeSpan.FromSeconds(requestLimits.RequestTimeoutSeconds),
+        TimeoutStatusCode = StatusCodes.Status504GatewayTimeout,
+        WriteTimeoutResponse = async context =>
+        {
+            context.Response.ContentType = "application/json";
+            context.Response.Headers.CacheControl = "no-store";
+            await context.Response.WriteAsJsonAsync(
+                ApiErrorFactory.Create(
+                    context,
+                    "REQUEST_TIMEOUT",
+                    "The request exceeded the permitted execution time."));
+        }
+    };
+});
 
 builder.AddSerilogLogging();
 builder.Services.AddApiServices(builder.Configuration, builder.Environment);
@@ -54,6 +86,7 @@ else
 app.UseForwardedHeaders();
 app.UseSerilogRequestLogging();
 app.UseMiddleware<ExceptionHandlingMiddleware>();
+app.UseRequestTimeouts();
 app.UseStatusCodePages(async statusCodeContext =>
 {
     var response = statusCodeContext.HttpContext.Response;
@@ -63,11 +96,15 @@ app.UseStatusCodePages(async statusCodeContext =>
         StatusCodes.Status404NotFound => ("NOT_FOUND", "Resource not found."),
         StatusCodes.Status405MethodNotAllowed => ("METHOD_NOT_ALLOWED", "The HTTP method is not allowed for this resource."),
         StatusCodes.Status415UnsupportedMediaType => ("UNSUPPORTED_MEDIA_TYPE", "The request media type is not supported."),
+        StatusCodes.Status413PayloadTooLarge => ("REQUEST_TOO_LARGE", "The request body exceeds the permitted size."),
+        StatusCodes.Status431RequestHeaderFieldsTooLarge => ("REQUEST_HEADERS_TOO_LARGE", "The request headers exceed the permitted size."),
         _ => ("HTTP_ERROR", "The request could not be completed.")
     };
 
     response.ContentType = "application/json";
-    await response.WriteAsJsonAsync(ApiErrorFactory.Create(statusCodeContext.HttpContext, code, message));
+    await response.WriteAsJsonAsync(
+        ApiErrorFactory.Create(statusCodeContext.HttpContext, code, message),
+        statusCodeContext.HttpContext.RequestAborted);
 });
 app.UseCors("TrustedWebClient");
 app.UseAuthentication();

@@ -7,6 +7,10 @@ public interface IShortUrlRepository
 {
     Task<ShortUrlListResult> ListOwnedAsync(ShortUrlListCriteria criteria, CancellationToken ct);
     Task<ShortUrlCreationResult> TryCreateAsync(ShortUrl entity, CancellationToken ct);
+    Task<IdempotentShortUrlCreationResult> TryCreateIdempotentAsync(
+        ShortUrl entity,
+        ShortUrlIdempotencyContext idempotency,
+        CancellationToken ct);
     Task<ShortUrl?> GetOwnedByShortCodeNotDeletedAsync(string shortCode, Guid ownerId, CancellationToken ct);
     Task<ShortUrl?> GetOwnedByShortCodeAsync(string shortCode, Guid ownerId, CancellationToken ct);
     Task<RedirectLookupModel?> GetRedirectByShortCodeAsync(string shortCode, CancellationToken ct);

@@ -4,7 +4,7 @@ This directory is the execution plan for the product defined in `docs/PRD.md`.
 
 ## Active Phase
 
-**Phase 07 — Distributed Rate Limiting & API Resilience**
+**Phase 08 — Asynchronous Click Analytics Pipeline**
 
 Do not start a later phase until the active phase completion gate is satisfied, unless a documented dependency explicitly requires it.
 
@@ -45,6 +45,8 @@ Use exactly one of:
 - `authentication.md` describes account and session behavior.
 - `authorization.md` defines protected management routes, owner-scoped access, and the 401/403/404 concealment policy.
 - `management-api.md` is the finalized Angular-facing management resource, pagination/filter, error, UTC timestamp, and public URL contract.
+- `idempotency-request-resilience.md` defines caller-scoped URL-create retries, retention,
+  request/timeout bounds, safe dependency retry behavior, cancellation, and manual scenarios.
 - `persistence.md` describes storage configuration and migration operations.
 - `proxy-trust.md` defines direct and proxied client-IP derivation, trusted proxy/network
   configuration, IP normalization, and topology-change verification.

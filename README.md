@@ -44,6 +44,7 @@ $env:Storage__UseInMemory = "false"
 See [Authentication and Session API](docs/authentication.md) for endpoint contracts, refresh-cookie/CSRF handling, expiration, revocation, and all identity configuration.
 See [Authorization Boundaries](docs/authorization.md) for protected URL-management routes and owner-scoped access semantics.
 See [URL Creation Contract](docs/url-creation.md) for validation, UTC expiry, entropy, and concurrency-safe uniqueness behavior.
+See [Idempotency and Request Resilience](docs/idempotency-request-resilience.md) for safe URL-create retries, request limits, timeouts, dependency retry boundaries, and cancellation.
 See [Owned URL Query API](docs/owned-url-query.md) for dashboard listing, search, filters, sorting, deletion visibility, and pagination.
 See [Owned URL Mutation Lifecycle](docs/url-lifecycle.md) for update/status/delete/restore contracts. The restore window is configured with `ShortUrlLifecycle:SoftDeleteRetentionDays` and defaults to 30 days.
 See [Management API Contract](docs/management-api.md) for the finalized Angular-facing resource, collection, error, UTC timestamp, and public URL contracts.
@@ -144,6 +145,7 @@ Request with only `originalUrl`:
 ```bash
 curl -X POST "https://localhost:7221/api/v1/short-urls" \
   -H "Authorization: Bearer $accessToken" \
+  -H "Idempotency-Key: 4ac7854d-10b2-47d0-af2f-53a90fa944f0" \
   -H "Content-Type: application/json" \
   -d "{\"originalUrl\":\"https://example.com/articles/hello\"}"
 ```
@@ -181,9 +183,12 @@ Status codes:
 - `201 Created`: short URL created
 - `400 Bad Request`: validation error (invalid URL, invalid alias, invalid expiry, missing body)
 - `409 Conflict`: alias already exists (`ALIAS_CONFLICT`)
+- `409 Conflict`: an idempotency key was reused with different content (`IDEMPOTENCY_KEY_REUSED`)
+- `413 Payload Too Large`: the create body exceeds 8 KiB (`REQUEST_TOO_LARGE`)
 - `429 Too Many Requests`: the per-user creation token bucket is exhausted (`Retry-After` and
   `Cache-Control: no-store` headers are returned)
 - `500 Internal Server Error`: generated-code creation exhausted its five collision attempts (`SHORTCODE_GENERATION_FAILED`) or an unexpected persistence failure occurred
+- `504 Gateway Timeout`: request execution exceeded the configured bound (`REQUEST_TIMEOUT`)
 
 Generated codes are eight case-sensitive base-62 characters. `originalUrl` is limited to 2,048 characters, and a supplied `expiresAtUtc` must be a future UTC timestamp ending in `Z`.
 

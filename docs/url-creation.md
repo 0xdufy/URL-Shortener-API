@@ -2,6 +2,12 @@
 
 `POST /api/v1/short-urls` creates a link for the authenticated user. The request cannot supply an owner ID; the application obtains the stable user ID from `ICurrentUserContext` and rejects creation when it is absent.
 
+Clients that may retry creation should send a unique `Idempotency-Key` and reuse it only for the
+same logical payload. Same-key retries are caller-scoped and return the same logical resource;
+different payloads return `409 IDEMPOTENCY_KEY_REUSED`. See
+[Idempotency and Request Resilience](idempotency-request-resilience.md) for key syntax, retention,
+concurrency, size/timeout bounds, and manual verification.
+
 ## Input rules
 
 - `originalUrl` is required, may contain at most 2,048 characters, and must be an absolute `http` or `https` URI.
