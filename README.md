@@ -9,6 +9,7 @@ URL Shortener API is a .NET 10 ASP.NET Core Web API for creating and managing ow
 - .NET 10 SDK (the repository `global.json` accepts the latest installed 10.0.1xx patch)
 - SQL Server (LocalDB or a full SQL Server instance)
 - Redis on `127.0.0.1:6379` (or Docker for the provisional local instance)
+- RabbitMQ on `127.0.0.1:5672` for the asynchronous click transport
 - Node.js `^20.19.0`, `^22.12.0`, or `>=24.0.0` and npm `>=10.0.0` for the Angular client
 
 ### 2) Configuration
@@ -61,6 +62,11 @@ algorithms, safe configuration bounds, Redis key expiry, `429` retry metadata, a
 See [Client IP and Reverse-Proxy Trust](docs/proxy-trust.md) before deploying behind a proxy or
 load balancer. Forwarded client IPs are disabled by default and require explicit trusted
 proxy/network configuration.
+
+RabbitMQ is configured independently under `RabbitMq`. Development uses the local `guest` account;
+deployed environments must inject least-privilege credentials and endpoint/TLS settings through
+environment variables or a secret provider. See [Click Event Transport](docs/click-event-transport.md)
+for local startup, topology, retry/dead-letter behaviour, outage semantics, and worker startup.
 
 ### 3) Database setup
 Restore the repository-pinned EF CLI:

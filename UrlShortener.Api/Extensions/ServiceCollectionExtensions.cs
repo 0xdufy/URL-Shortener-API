@@ -22,6 +22,7 @@ using UrlShortener.Application.Validators;
 using UrlShortener.Infrastructure.Caching;
 using UrlShortener.Infrastructure.Configuration;
 using UrlShortener.Infrastructure.Identity;
+using UrlShortener.Infrastructure.Messaging;
 using UrlShortener.Infrastructure.Persistence;
 using UrlShortener.Infrastructure.Persistence.Repositories;
 using UrlShortener.Infrastructure.RateLimiting;
@@ -48,6 +49,8 @@ public static class ServiceCollectionExtensions
         var redisSection = configuration.GetRequiredSection(RedisOptions.SectionName);
         var idempotencySection = configuration.GetRequiredSection(IdempotencyOptions.SectionName);
         var requestLimitsSection = configuration.GetRequiredSection(RequestLimitsOptions.SectionName);
+
+        services.AddRabbitMqTransport(configuration, environment);
 
         var storageOptions = storageSection.Get<StorageOptions>()
             ?? throw new InvalidOperationException($"Configuration section '{StorageOptions.SectionName}' is invalid.");

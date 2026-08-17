@@ -11,6 +11,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UrlShortener.Infrastructure
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UrlShortener.Domain", "UrlShortener.Domain\UrlShortener.Domain.csproj", "{20E29437-84CA-4444-9F11-D8913C1DAA10}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UrlShortener.Analytics.Worker", "workers\UrlShortener.Analytics.Worker\UrlShortener.Analytics.Worker.csproj", "{88AA21B8-BB8E-4BC2-80A2-3D2315AD7824}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -69,6 +71,18 @@ Global
 		{20E29437-84CA-4444-9F11-D8913C1DAA10}.Release|x64.Build.0 = Release|Any CPU
 		{20E29437-84CA-4444-9F11-D8913C1DAA10}.Release|x86.ActiveCfg = Release|Any CPU
 		{20E29437-84CA-4444-9F11-D8913C1DAA10}.Release|x86.Build.0 = Release|Any CPU
+		{88AA21B8-BB8E-4BC2-80A2-3D2315AD7824}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{88AA21B8-BB8E-4BC2-80A2-3D2315AD7824}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{88AA21B8-BB8E-4BC2-80A2-3D2315AD7824}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{88AA21B8-BB8E-4BC2-80A2-3D2315AD7824}.Debug|x64.Build.0 = Debug|Any CPU
+		{88AA21B8-BB8E-4BC2-80A2-3D2315AD7824}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{88AA21B8-BB8E-4BC2-80A2-3D2315AD7824}.Debug|x86.Build.0 = Debug|Any CPU
+		{88AA21B8-BB8E-4BC2-80A2-3D2315AD7824}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{88AA21B8-BB8E-4BC2-80A2-3D2315AD7824}.Release|Any CPU.Build.0 = Release|Any CPU
+		{88AA21B8-BB8E-4BC2-80A2-3D2315AD7824}.Release|x64.ActiveCfg = Release|Any CPU
+		{88AA21B8-BB8E-4BC2-80A2-3D2315AD7824}.Release|x64.Build.0 = Release|Any CPU
+		{88AA21B8-BB8E-4BC2-80A2-3D2315AD7824}.Release|x86.ActiveCfg = Release|Any CPU
+		{88AA21B8-BB8E-4BC2-80A2-3D2315AD7824}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
