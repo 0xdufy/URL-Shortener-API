@@ -65,8 +65,11 @@ proxy/network configuration.
 
 RabbitMQ is configured independently under `RabbitMq`. Development uses the local `guest` account;
 deployed environments must inject least-privilege credentials and endpoint/TLS settings through
-environment variables or a secret provider. See [Click Event Transport](docs/click-event-transport.md)
-for local startup, topology, retry/dead-letter behaviour, outage semantics, and worker startup.
+environment variables or a secret provider. Deployments must also inject a random, stable
+`ClickEvents__VisitorIdentityHmacKeyBase64` secret of at least 32 bytes for daily pseudonymous
+visitor identifiers. See [Click Event Transport](docs/click-event-transport.md) for local startup,
+the versioned privacy-aware event contract, publication failure policy, topology,
+retry/dead-letter behaviour, and worker startup.
 
 ### 3) Database setup
 Restore the repository-pinned EF CLI:

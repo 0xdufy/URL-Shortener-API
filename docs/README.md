@@ -52,8 +52,9 @@ Use exactly one of:
   configuration, IP normalization, and topology-change verification.
 - `rate-limiting.md` defines distributed policies, identities, algorithms, configuration bounds,
   Redis state/expiry, `429` metadata, and outage behavior.
-- `click-event-transport.md` defines RabbitMQ topology, configuration, delivery, retry/dead-letter,
-  worker placement, and outage behavior.
+- `click-event-transport.md` defines the versioned privacy-aware click contract, redirect-facing
+  publication failure policy, RabbitMQ topology/configuration, delivery, retry/dead-letter, worker
+  placement, and outage behavior.
 - `redis.md` describes distributed-cache configuration, connection lifecycle, key namespaces, local setup, and outage behavior.
 - `redirect-cache.md` defines redirect outcomes, payloads, TTL, invalidation, race safety,
   corruption handling, access recording, and Redis outage fallback.

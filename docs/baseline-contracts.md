@@ -115,13 +115,13 @@ Optional query keys are `fromUtc` and `toUtc`, parsed as nullable `DateTime` val
 
 | Stored state | Result |
 |---|---|
-| Active, non-deleted, not expired | Synchronously records analytics, then `302 Found` to `OriginalUrl` |
+| Active, non-deleted, not expired | Synchronously records baseline analytics, best-effort publishes a click event, then returns `302 Found` to `OriginalUrl` |
 | Missing | `404 NOT_FOUND` |
 | Soft-deleted | `404 NOT_FOUND` |
 | Inactive | `404 NOT_FOUND` |
 | `ExpiresAtUtc <= now` | `410 EXPIRED` |
 
-The endpoint reads cache first and then persistence. It rechecks active/deleted/expiry during the click-count update. A successful redirect synchronously increments the count, updates `LastAccessedAtUtc`, inserts an access log with IP/user agent/referrer, and saves it. If that conditional update says the record is no longer redirectable, the cache entry is removed and the request ultimately resolves from current persistence state.
+The endpoint reads cache first and then persistence. It rechecks active/deleted/expiry during the click-count update. A successful redirect currently increments the baseline count, updates `LastAccessedAtUtc`, inserts an access log with IP/user agent/referrer, and saves it. After that authoritative guard succeeds, it makes a bounded best-effort publication of the privacy-aware `analytics.click` version 1 event. Broker failure is logged and does not deny the redirect. If the conditional update says the record is no longer redirectable, the cache entry is removed, no successful-click event is emitted, and the request ultimately resolves from current persistence state. TASK-032 removes the transitional synchronous analytics write after TASK-031 supplies idempotent worker persistence.
 
 ASP.NET's `Redirect(string)` produces a temporary `302`; redirects are not permanently cacheable by contract.
 

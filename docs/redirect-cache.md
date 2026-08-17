@@ -101,14 +101,18 @@ or raced with a fill. A successful mutation is visible to another healthy instan
 redirect lookup; an already in-flight redirect is ordered by the persisted guard it completed
 against.
 
-## Access Recording Boundary
+## Access Recording and Click Publication Boundary
 
-Phase 06 intentionally preserves synchronous click-count and access-log persistence. The resolver
+Phase 06 introduced and TASK-030 still preserves synchronous click-count and access-log persistence
+until the worker persistence path is ready. The resolver
 calls the application-level `IRedirectAccessRecorder` with the validated short URL ID, exact
 destination/expiry snapshot, access UTC, and existing client metadata. Its current implementation
-performs the atomic state guard/counter update and access-log insert exactly as before. This is the
-replacement seam for Phase 08 event publication; no queue, event contract, or asynchronous
-analytics behavior is introduced here.
+performs the atomic state guard/counter update and access-log insert. Only after that guard succeeds,
+the resolver calls the broker-neutral `IRedirectClickEventPublisher`. It reduces client metadata to
+the privacy boundary documented in `click-event-transport.md` and makes a bounded best-effort queue
+publication. Publication failure is observable but fail-open, while stale/invalid link rejection
+still evicts cache and emits no successful-click event. TASK-032 removes the transitional
+synchronous analytics recorder after TASK-031 supplies the worker persistence boundary.
 
 The controller emits a debug-level structured completion log containing short code, resolution
 status, cache/persistence source, and elapsed milliseconds. It does not log the destination or

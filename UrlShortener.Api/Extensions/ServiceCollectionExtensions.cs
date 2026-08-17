@@ -49,8 +49,16 @@ public static class ServiceCollectionExtensions
         var redisSection = configuration.GetRequiredSection(RedisOptions.SectionName);
         var idempotencySection = configuration.GetRequiredSection(IdempotencyOptions.SectionName);
         var requestLimitsSection = configuration.GetRequiredSection(RequestLimitsOptions.SectionName);
+        var clickEventSection = configuration.GetRequiredSection(ClickEventPrivacyOptions.SectionName);
 
         services.AddRabbitMqTransport(configuration, environment);
+
+        services.AddOptions<ClickEventPrivacyOptions>()
+            .Bind(clickEventSection)
+            .Validate(
+                options => IsValidSecretKey(options.VisitorIdentityHmacKeyBase64),
+                "ClickEvents:VisitorIdentityHmacKeyBase64 must contain at least 32 bytes encoded as Base64.")
+            .ValidateOnStart();
 
         var storageOptions = storageSection.Get<StorageOptions>()
             ?? throw new InvalidOperationException($"Configuration section '{StorageOptions.SectionName}' is invalid.");
@@ -376,6 +384,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IShortUrlService, ShortUrlService>();
         services.AddScoped<IRedirectResolver, RedirectResolver>();
         services.AddScoped<IRedirectAccessRecorder, SynchronousRedirectAccessRecorder>();
+        services.AddSingleton<IRedirectClickEventPublisher, PrivacyAwareRedirectClickEventPublisher>();
         services.AddSingleton(new ShortUrlLifecycleSettings(shortUrlLifecycleOptions.SoftDeleteRetentionDays));
         services.AddSingleton(new ShortUrlContractSettings(publicUrlOptions.BaseUrl));
         services.AddSingleton(new IdempotencySettings(idempotencyOptions.RetentionHours));
@@ -397,6 +406,11 @@ public static class ServiceCollectionExtensions
     }
 
     private static bool IsValidSigningKey(string value)
+    {
+        return IsValidSecretKey(value);
+    }
+
+    private static bool IsValidSecretKey(string value)
     {
         try
         {

@@ -10,17 +10,20 @@ public sealed class RedirectResolver : IRedirectResolver
     private readonly IShortUrlRepository _repository;
     private readonly IShortUrlCache _shortUrlCache;
     private readonly IRedirectAccessRecorder _accessRecorder;
+    private readonly IRedirectClickEventPublisher _clickEventPublisher;
     private readonly IDateTimeProvider _dateTimeProvider;
 
     public RedirectResolver(
         IShortUrlRepository repository,
         IShortUrlCache shortUrlCache,
         IRedirectAccessRecorder accessRecorder,
+        IRedirectClickEventPublisher clickEventPublisher,
         IDateTimeProvider dateTimeProvider)
     {
         _repository = repository;
         _shortUrlCache = shortUrlCache;
         _accessRecorder = accessRecorder;
+        _clickEventPublisher = clickEventPublisher;
         _dateTimeProvider = dateTimeProvider;
     }
 
@@ -41,6 +44,13 @@ public sealed class RedirectResolver : IRedirectResolver
             if (cachedStatus == RedirectResolutionStatus.Resolved &&
                 await TryRecordAccessAsync(cachedCandidate, accessedAtUtc, ipAddress, userAgent, referer, ct))
             {
+                await PublishClickEventAsync(
+                    cachedCandidate.ShortUrlId,
+                    accessedAtUtc,
+                    ipAddress,
+                    userAgent,
+                    referer,
+                    ct);
                 return RedirectResolutionResult.Resolved(
                     cachedCandidate.OriginalUrl,
                     RedirectResolutionSource.DistributedCache);
@@ -77,6 +87,13 @@ public sealed class RedirectResolver : IRedirectResolver
                 referer,
                 ct))
             {
+                await PublishClickEventAsync(
+                    persistedCandidate.ShortUrlId,
+                    accessedAtUtc,
+                    ipAddress,
+                    userAgent,
+                    referer,
+                    ct);
                 await CacheAsync(redirect, accessedAtUtc, ct);
                 return RedirectResolutionResult.Resolved(
                     persistedCandidate.OriginalUrl,
@@ -107,6 +124,24 @@ public sealed class RedirectResolver : IRedirectResolver
             referer);
 
         return await _accessRecorder.TryRecordAsync(request, ct);
+    }
+
+    private Task PublishClickEventAsync(
+        Guid shortUrlId,
+        DateTime accessedAtUtc,
+        string ipAddress,
+        string? userAgent,
+        string? referer,
+        CancellationToken ct)
+    {
+        var request = new RedirectClickEventRequest(
+            shortUrlId,
+            new DateTimeOffset(DateTime.SpecifyKind(accessedAtUtc, DateTimeKind.Utc)),
+            ipAddress,
+            userAgent,
+            referer);
+
+        return _clickEventPublisher.PublishBestEffortAsync(request, ct);
     }
 
     private async Task CacheAsync(
