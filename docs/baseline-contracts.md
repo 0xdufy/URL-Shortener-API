@@ -111,17 +111,28 @@ Optional query keys are `fromUtc` and `toUtc`, parsed as nullable `DateTime` val
 
 `totalClicks` is the sum inside the requested range, not the entity's lifetime counter. Days with zero clicks are omitted. Missing/deleted codes return `404`; inactive and expired codes remain queryable. Because automatic model-state responses are suppressed and this action does not inspect model state, invalid date query text may fall back to null/default range instead of returning a normalized `400`.
 
+Analytics reads are eventually consistent with the redirect stream. A healthy broker and worker
+normally make a click visible within a few seconds; retries and outage recovery can extend the lag,
+and the fail-open best-effort publication policy permits an individual click to be absent.
+
 ### GET `/r/{shortCode}`
 
 | Stored state | Result |
 |---|---|
-| Active, non-deleted, not expired | Synchronously records baseline analytics, best-effort publishes a click event, then returns `302 Found` to `OriginalUrl` |
+| Active, non-deleted, not expired | Read-validates current redirect state, best-effort publishes a click event, then returns `302 Found` to `OriginalUrl` |
 | Missing | `404 NOT_FOUND` |
 | Soft-deleted | `404 NOT_FOUND` |
 | Inactive | `404 NOT_FOUND` |
 | `ExpiresAtUtc <= now` | `410 EXPIRED` |
 
-The endpoint reads cache first and then persistence. It rechecks active/deleted/expiry during the click-count update. A successful redirect currently increments the baseline count, updates `LastAccessedAtUtc`, inserts an access log with IP/user agent/referrer, and saves it. After that authoritative guard succeeds, it makes a bounded best-effort publication of the privacy-aware `analytics.click` version 1 event. Broker failure is logged and does not deny the redirect. If the conditional update says the record is no longer redirectable, the cache entry is removed, no successful-click event is emitted, and the request ultimately resolves from current persistence state. TASK-032 removes the transitional synchronous analytics write after TASK-031 supplies idempotent worker persistence.
+The endpoint reads cache first and then persistence. Before using either candidate it performs an
+exact read-only guard over the short URL ID, destination, expiry, active state, and deletion state.
+After that authoritative guard succeeds, it makes one bounded best-effort publication of the
+privacy-aware `analytics.click` version 1 event. Broker failure is logged and does not deny the
+redirect. If the guard says the candidate is no longer redirectable, the cache entry is removed,
+no successful-click event is emitted, and the request ultimately resolves from current persistence
+state. The HTTP request does not increment `ClickCount`, update `LastAccessedAtUtc`, or insert an
+access log; those writes occur only when the analytics worker processes the event.
 
 ASP.NET's `Redirect(string)` produces a temporary `302`; redirects are not permanently cacheable by contract.
 

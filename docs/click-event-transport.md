@@ -69,7 +69,7 @@ is:
 
 The redirect resolver captures the access time in UTC once, at the start of resolution before the
 cache lookup. The same instant becomes both `occurredAtUtc` and `payload.accessedAtUtc`. Publication
-occurs only after the existing authoritative access guard accepts the active, non-deleted,
+occurs only after the read-only authoritative state guard accepts the active, non-deleted,
 non-expired link. Missing, inactive, deleted, expired, and stale-cache-rejected requests do not
 publish successful-click events.
 
@@ -145,10 +145,16 @@ database work and leaves its delivery unacknowledged/requeued rather than acknow
 was not persisted.
 
 The event-backed access log is the source of truth for asynchronous click analytics;
-`ClickCount` and `LastAccessedAtUtc` are transactional projections maintained only by this worker in
-the Phase 08 target architecture. TASK-032 removes the transitional synchronous redirect recorder.
-During that ordered rollout, do not enable the consumer beside an API version that still performs
-the legacy synchronous write, because that separate record has no shared event ID.
+`ClickCount` and `LastAccessedAtUtc` are transactional projections maintained only by this worker.
+The redirect HTTP path contains no counter update or access-log insert, so synchronous and
+asynchronous counting cannot both record the same click.
+
+Management details, lists, click-count sorting, and statistics are eventually consistent. With a
+healthy broker, continuously running worker, and available SQL Server, a successful redirect is
+expected to become visible within a few seconds. Retry backoff, queued backlog, worker downtime, or
+SQL outage can extend that delay until recovery. The fail-open publication policy also means a
+click whose one publication attempt fails may never appear; the API does not present analytics as
+an exact real-time ledger.
 
 The access-log primary key supports event-ID lookup. The
 `(ShortUrlId, AccessedAtUtc, Id)` index supports link timelines and date aggregates, while

@@ -199,6 +199,24 @@ public class ShortUrlRepository : IShortUrlRepository
             .FirstOrDefaultAsync(ct);
     }
 
+    public Task<bool> IsRedirectCurrentAsync(
+        Guid shortUrlId,
+        string expectedOriginalUrl,
+        DateTime? expectedExpiresAtUtc,
+        DateTime accessedAtUtc,
+        CancellationToken ct)
+    {
+        return _dbContext.ShortUrls
+            .AsNoTracking()
+            .AnyAsync(x =>
+                x.Id == shortUrlId &&
+                EF.Functions.Collate(x.OriginalUrl, BinaryCollation) == expectedOriginalUrl &&
+                x.ExpiresAtUtc == expectedExpiresAtUtc &&
+                !x.IsDeleted &&
+                x.IsActive &&
+                (!x.ExpiresAtUtc.HasValue || x.ExpiresAtUtc.Value > accessedAtUtc), ct);
+    }
+
     public async Task<List<(DateTime DateUtc, int Clicks)>> GetDailyClicksAsync(Guid shortUrlId, DateTime fromUtc, DateTime toUtc, CancellationToken ct)
     {
         var grouped = await _dbContext.ShortUrlAccessLogs
@@ -214,33 +232,6 @@ public class ShortUrlRepository : IShortUrlRepository
             .ToListAsync(ct);
 
         return grouped.Select(x => (x.DateUtc, x.Clicks)).ToList();
-    }
-
-    public async Task<bool> IncrementClickCountAsync(
-        Guid shortUrlId,
-        string expectedOriginalUrl,
-        DateTime? expectedExpiresAtUtc,
-        DateTime accessedAtUtc,
-        CancellationToken ct)
-    {
-        var affectedRows = await _dbContext.ShortUrls
-            .Where(x =>
-                x.Id == shortUrlId &&
-                EF.Functions.Collate(x.OriginalUrl, BinaryCollation) == expectedOriginalUrl &&
-                x.ExpiresAtUtc == expectedExpiresAtUtc &&
-                !x.IsDeleted &&
-                x.IsActive &&
-                (!x.ExpiresAtUtc.HasValue || x.ExpiresAtUtc.Value > accessedAtUtc))
-            .ExecuteUpdateAsync(update => update
-                .SetProperty(x => x.ClickCount, x => x.ClickCount + 1)
-                .SetProperty(x => x.LastAccessedAtUtc, accessedAtUtc), ct);
-
-        return affectedRows > 0;
-    }
-
-    public Task AddAccessLogAsync(ShortUrlAccessLog log, CancellationToken ct)
-    {
-        return _dbContext.ShortUrlAccessLogs.AddAsync(log, ct).AsTask();
     }
 
     public Task SaveChangesAsync(CancellationToken ct)

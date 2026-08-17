@@ -17,6 +17,10 @@
 | `sortBy` | `createdAt` | `createdAt`, `shortCode`, `clickCount`, or `expiresAt`. |
 | `sortDirection` | `desc` | `asc` or `desc`. |
 
+`clickCount` is an eventually consistent worker-maintained projection. In healthy operation it
+normally follows a redirect within a few seconds; queue retry or outage recovery can make list
+values and click-count sorting lag longer.
+
 Every ordering appends `id` in the same direction as a stable tie-breaker. This makes the ordering deterministic across pages for an unchanged data set. This is offset pagination, so concurrent inserts or mutations can still shift later pages.
 
 Invalid model-bound values and unsupported filter or sort values return `400 VALIDATION_ERROR` using the common error envelope.

@@ -383,7 +383,6 @@ public static class ServiceCollectionExtensions
 
         services.AddScoped<IShortUrlService, ShortUrlService>();
         services.AddScoped<IRedirectResolver, RedirectResolver>();
-        services.AddScoped<IRedirectAccessRecorder, SynchronousRedirectAccessRecorder>();
         services.AddSingleton<IRedirectClickEventPublisher, PrivacyAwareRedirectClickEventPublisher>();
         services.AddSingleton(new ShortUrlLifecycleSettings(shortUrlLifecycleOptions.SoftDeleteRetentionDays));
         services.AddSingleton(new ShortUrlContractSettings(publicUrlOptions.BaseUrl));

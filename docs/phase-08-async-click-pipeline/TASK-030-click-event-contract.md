@@ -45,10 +45,10 @@ Perform successful and failed redirect scenarios and inspect emitted events to c
   daily pseudonymous visitor identifier. It excludes destination URL, short code, owner, raw IP,
   full referrer, and request identifiers. Startup requires a Base64 HMAC key of at least 32 bytes;
   the committed Development key is deliberately local-only.
-- Publication is invoked through `IRedirectClickEventPublisher` only after the existing
-  authoritative access guard accepts a currently active, non-deleted, non-expired link. Transport
-  types remain in Infrastructure. TASK-032 still owns removal of the transitional synchronous
-  analytics write once TASK-031 provides worker persistence.
+- Publication is invoked through `IRedirectClickEventPublisher` only after the read-only
+  authoritative state guard accepts a currently active, non-deleted, non-expired link. Transport
+  types remain in Infrastructure. TASK-032 removed the transitional synchronous analytics writer,
+  leaving the worker as the only analytics persistence path.
 - The documented product policy is one bounded, publisher-confirmed attempt with no local buffer or
   ambiguous retry. Transport failure logs event/short-link IDs and fails open so the redirect stays
   available; request cancellation still propagates.

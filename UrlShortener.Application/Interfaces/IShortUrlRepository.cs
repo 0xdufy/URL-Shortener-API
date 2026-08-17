@@ -14,13 +14,12 @@ public interface IShortUrlRepository
     Task<ShortUrl?> GetOwnedByShortCodeNotDeletedAsync(string shortCode, Guid ownerId, CancellationToken ct);
     Task<ShortUrl?> GetOwnedByShortCodeAsync(string shortCode, Guid ownerId, CancellationToken ct);
     Task<RedirectLookupModel?> GetRedirectByShortCodeAsync(string shortCode, CancellationToken ct);
-    Task<List<(DateTime DateUtc, int Clicks)>> GetDailyClicksAsync(Guid shortUrlId, DateTime fromUtc, DateTime toUtc, CancellationToken ct);
-    Task<bool> IncrementClickCountAsync(
+    Task<bool> IsRedirectCurrentAsync(
         Guid shortUrlId,
         string expectedOriginalUrl,
         DateTime? expectedExpiresAtUtc,
         DateTime accessedAtUtc,
         CancellationToken ct);
-    Task AddAccessLogAsync(ShortUrlAccessLog log, CancellationToken ct);
+    Task<List<(DateTime DateUtc, int Clicks)>> GetDailyClicksAsync(Guid shortUrlId, DateTime fromUtc, DateTime toUtc, CancellationToken ct);
     Task SaveChangesAsync(CancellationToken ct);
 }

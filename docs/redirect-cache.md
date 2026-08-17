@@ -53,7 +53,7 @@ still authorized by the persisted active/deleted/expiry guard before its destina
 An expired cached candidate is evicted and reloaded instead of directly returning `410`, allowing
 a concurrently extended expiry to resolve from authoritative persistence.
 
-If the persisted row changes between fallback lookup and the atomic guard, the resolver reloads
+If the persisted row changes between fallback lookup and the read-only guard, the resolver reloads
 and reclassifies it. This retry is bounded to three persistence attempts. The common concurrent
 inactive/deleted/expired/destination-change cases therefore return their current documented result
 or the new valid destination; sustained mutation churn fails closed as `404` rather than returning
@@ -85,8 +85,8 @@ contract. Any future alias mutation must invalidate both the old and new short-c
 uniqueness-safe commit.
 
 Invalidation alone does not close a cache-aside fill race, and a Redis outage can prevent a remove
-from reaching the server. Before returning a cached destination, the existing atomic click update
-also requires all of the following persisted state to match:
+from reaching the server. Before returning a cached destination, a read-only authoritative guard
+requires all of the following persisted state to match:
 
 - the cached short URL ID;
 - the destination using an exact binary comparison;
@@ -94,25 +94,27 @@ also requires all of the following persisted state to match:
 - active and not deleted state;
 - expiry later than the access time, when present.
 
-If that guard updates no row, the API evicts the entry, reloads by short code without EF tracking,
-and applies the same state evaluator. Consequently, a stale entry cannot authorize a redirect
-after a destination, expiry, status, deletion, or restore mutation, even when invalidation failed
-or raced with a fill. A successful mutation is visible to another healthy instance on its next
-redirect lookup; an already in-flight redirect is ordered by the persisted guard it completed
+If that guard finds no matching row, the API evicts the entry, reloads by short code without EF
+tracking, and applies the same state evaluator. Consequently, a stale entry cannot authorize a
+redirect after a destination, expiry, status, deletion, or restore mutation, even when invalidation
+failed or raced with a fill. A successful mutation is visible to another healthy instance on its
+next redirect lookup; an already in-flight redirect is ordered by the persisted guard it completed
 against.
 
-## Access Recording and Click Publication Boundary
+## Redirect Validation and Click Publication Boundary
 
-Phase 06 introduced and TASK-030 still preserves synchronous click-count and access-log persistence
-until the worker persistence path is ready. The resolver
-calls the application-level `IRedirectAccessRecorder` with the validated short URL ID, exact
-destination/expiry snapshot, access UTC, and existing client metadata. Its current implementation
-performs the atomic state guard/counter update and access-log insert. Only after that guard succeeds,
-the resolver calls the broker-neutral `IRedirectClickEventPublisher`. It reduces client metadata to
-the privacy boundary documented in `click-event-transport.md` and makes a bounded best-effort queue
-publication. Publication failure is observable but fail-open, while stale/invalid link rejection
-still evicts cache and emits no successful-click event. TASK-032 removes the transitional
-synchronous analytics recorder after TASK-031 supplies the worker persistence boundary.
+The resolver calls `IShortUrlRepository.IsRedirectCurrentAsync` with the validated short URL ID,
+exact destination/expiry snapshot, and access UTC. This query only verifies authoritative redirect
+state; it does not update a counter, timestamp, or access log. Only after that guard succeeds does
+the resolver call the broker-neutral `IRedirectClickEventPublisher`. The publisher reduces client
+metadata to the privacy boundary documented in `click-event-transport.md` and makes one bounded
+best-effort queue publication. Publication failure is observable but fail-open, while stale or
+invalid link rejection still evicts cache and emits no successful-click event.
+
+The analytics worker is the only owner of `ClickCount`, `LastAccessedAtUtc`, and access-log writes.
+Management analytics therefore normally trail redirects by a few seconds and may lag longer during
+retry, backlog, or outage recovery. A click can be absent when its allowed best-effort publication
+attempt fails.
 
 The controller emits a debug-level structured completion log containing short code, resolution
 status, cache/persistence source, and elapsed milliseconds. It does not log the destination or
@@ -125,7 +127,7 @@ Redis connection and operation timeouts remain bounded by `RedisOptions`:
 - any non-cancellation cache read failure is logged and treated as a miss, so persistence resolves
   the redirect;
 - a failed fill is logged and the uncached persisted result remains valid;
-- a failed invalidation is logged and the persisted redirect-state guard prevents a surviving
+- a failed invalidation is logged and the read-only persisted-state guard prevents a surviving
   stale value from authorizing a redirect;
 - cancellations are not swallowed.
 
@@ -154,3 +156,8 @@ rows, confirming analytics-write behavior remained synchronous. All temporary da
 access logs, Redis keys, and API processes were removed afterward. A final smoke test after the
 redirect-only persistence projection repeated miss/hit `302`, the approximately 24-hour TTL, and
 expired `410` successfully.
+
+TASK-032 replaced the historical synchronous guard/write described in that verification with an
+equivalent read-only state guard. A disposable LocalDB trace of a cache-hit redirect observed one
+SQL read and no analytics insert/update; processing its captured event through the worker then
+performed the counter and access-log persistence.

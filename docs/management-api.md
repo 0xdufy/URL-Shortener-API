@@ -42,6 +42,10 @@ Create, detail, update, status, and restore return the same resource shape:
 
 All timestamp properties ending in `Utc` are ISO-8601 UTC values serialized with `Z`; nullable timestamps use JSON `null`. `isExpired`, restore eligibility, short URL construction, ownership, and counters are server-owned values.
 
+`clickCount` and `lastAccessedAtUtc` are eventually consistent projections maintained by the
+analytics worker. They normally update within a few seconds of a redirect when RabbitMQ, the
+worker, and SQL Server are healthy, and may lag longer during retry or outage recovery.
+
 ## Collection contract
 
 `GET /api/v1/short-urls` returns list projections plus explicit pagination and normalized applied filters:

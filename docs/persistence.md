@@ -10,6 +10,9 @@ The committed `appsettings.json` intentionally contains no connection string and
 
 The analytics worker always requires SQL Server, including in Development, because its event-ID
 uniqueness and transaction guarantees cannot be represented by the API's in-memory repository.
+End-to-end click analytics therefore require the API to use the same SQL Server database
+(`Storage:UseInMemory=false`); links created only in the development in-memory repository are not
+visible to the worker and their events are permanently rejected as missing-link events.
 
 ## Runtime Configuration
 

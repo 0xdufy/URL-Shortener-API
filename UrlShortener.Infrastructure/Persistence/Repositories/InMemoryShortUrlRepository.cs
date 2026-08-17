@@ -11,7 +11,6 @@ public class InMemoryShortUrlRepository : IShortUrlRepository
     private readonly Dictionary<string, Guid> _shortUrlIdsByCode = new(StringComparer.Ordinal);
     private readonly Dictionary<(Guid OwnerId, string KeyHash), ShortUrlCreationIdempotencyRecord>
         _idempotencyRecords = new();
-    private readonly List<ShortUrlAccessLog> _accessLogs = new();
 
     public Task<ShortUrlListResult> ListOwnedAsync(ShortUrlListCriteria criteria, CancellationToken ct)
     {
@@ -209,24 +208,7 @@ public class InMemoryShortUrlRepository : IShortUrlRepository
         }
     }
 
-    public Task<List<(DateTime DateUtc, int Clicks)>> GetDailyClicksAsync(Guid shortUrlId, DateTime fromUtc, DateTime toUtc, CancellationToken ct)
-    {
-        ct.ThrowIfCancellationRequested();
-
-        lock (_sync)
-        {
-            var result = _accessLogs
-                .Where(x => x.ShortUrlId == shortUrlId && x.AccessedAtUtc >= fromUtc && x.AccessedAtUtc <= toUtc)
-                .GroupBy(x => x.AccessedAtUtc.Date)
-                .OrderBy(x => x.Key)
-                .Select(x => (x.Key, x.Count()))
-                .ToList();
-
-            return Task.FromResult(result);
-        }
-    }
-
-    public Task<bool> IncrementClickCountAsync(
+    public Task<bool> IsRedirectCurrentAsync(
         Guid shortUrlId,
         string expectedOriginalUrl,
         DateTime? expectedExpiresAtUtc,
@@ -242,35 +224,21 @@ public class InMemoryShortUrlRepository : IShortUrlRepository
                 return Task.FromResult(false);
             }
 
-            if (!string.Equals(entity.OriginalUrl, expectedOriginalUrl, StringComparison.Ordinal) ||
-                entity.ExpiresAtUtc != expectedExpiresAtUtc ||
-                entity.IsDeleted ||
-                !entity.IsActive)
-            {
-                return Task.FromResult(false);
-            }
+            var isCurrent =
+                string.Equals(entity.OriginalUrl, expectedOriginalUrl, StringComparison.Ordinal) &&
+                entity.ExpiresAtUtc == expectedExpiresAtUtc &&
+                !entity.IsDeleted &&
+                entity.IsActive &&
+                (!entity.ExpiresAtUtc.HasValue || entity.ExpiresAtUtc.Value > accessedAtUtc);
 
-            if (entity.ExpiresAtUtc.HasValue && entity.ExpiresAtUtc.Value <= accessedAtUtc)
-            {
-                return Task.FromResult(false);
-            }
-
-            entity.ClickCount += 1;
-            entity.LastAccessedAtUtc = accessedAtUtc;
-            return Task.FromResult(true);
+            return Task.FromResult(isCurrent);
         }
     }
 
-    public Task AddAccessLogAsync(ShortUrlAccessLog log, CancellationToken ct)
+    public Task<List<(DateTime DateUtc, int Clicks)>> GetDailyClicksAsync(Guid shortUrlId, DateTime fromUtc, DateTime toUtc, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
-
-        lock (_sync)
-        {
-            _accessLogs.Add(log);
-        }
-
-        return Task.CompletedTask;
+        return Task.FromResult(new List<(DateTime DateUtc, int Clicks)>());
     }
 
     public Task SaveChangesAsync(CancellationToken ct)

@@ -196,7 +196,7 @@ interface ActionError {
                 <div>
                   <p>Total clicks</p>
                   <strong>{{ currentLink.clickCount | number }}</strong>
-                  <small>recorded for this link</small>
+                  <small>may take a few seconds to update</small>
                 </div>
               </article>
               <article class="surface metric-card">
@@ -204,7 +204,7 @@ interface ActionError {
                 <div>
                   <p>Last opened</p>
                   <strong class="date-value">{{ lastOpenedLabel(currentLink) }}</strong>
-                  <small>{{ lastOpenedContext(currentLink) }}</small>
+                  <small>{{ lastOpenedContext(currentLink) }} · may update shortly</small>
                 </div>
               </article>
               <article class="surface metric-card">

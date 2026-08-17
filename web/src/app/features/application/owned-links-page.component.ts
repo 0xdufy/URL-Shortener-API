@@ -81,7 +81,7 @@ interface LinkStatus {
           <div>
             <p>Clicks on this page</p>
             <strong>{{ pageClicks() | number }}</strong>
-            <small>across the links shown below</small>
+            <small>eventually consistent across the links shown</small>
           </div>
         </article>
         <article class="surface summary-card">

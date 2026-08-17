@@ -322,7 +322,9 @@ Status codes:
 See [Owned URL Mutation Lifecycle](docs/url-lifecycle.md) for alias immutability, retention, cache invalidation, and concurrency semantics.
 
 ### 9) GET `/api/v1/short-urls/{shortCode}/stats?fromUtc=&toUtc=`
-Returns click stats.
+Returns click stats. Analytics are worker-backed and eventually consistent: under normal healthy
+operation a successful redirect should appear within a few seconds, but queue retries or an outage
+can extend that delay. Best-effort publication can also leave an individual click unrecorded.
 
 Without query params (defaults to last 30 days):
 
