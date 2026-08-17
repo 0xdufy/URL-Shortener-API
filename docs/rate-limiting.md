@@ -8,10 +8,10 @@ server time, rather than an API process clock, defines windows and refill calcul
 
 | Policy | Endpoints | Partition identity | Strategy | Default |
 |---|---|---|---|---|
-| `Anonymous` | `GET /api/v1/auth/bootstrap` | Direct peer IP | Fixed window | 120 requests per 60 seconds |
-| `AuthenticationRegistration` | `POST /api/v1/auth/register` | Direct peer IP | Sliding window | 5 requests per 60 seconds |
-| `AuthenticationSignIn` | `POST /api/v1/auth/sign-in` | Direct peer IP | Sliding window | 10 requests per 60 seconds |
-| `AuthenticationSession` | `POST /api/v1/auth/refresh`, `POST /api/v1/auth/sign-out` | Direct peer IP | Sliding window | 30 requests per 60 seconds |
+| `Anonymous` | `GET /api/v1/auth/bootstrap` | Effective client IP | Fixed window | 120 requests per 60 seconds |
+| `AuthenticationRegistration` | `POST /api/v1/auth/register` | Effective client IP | Sliding window | 5 requests per 60 seconds |
+| `AuthenticationSignIn` | `POST /api/v1/auth/sign-in` | Effective client IP | Sliding window | 10 requests per 60 seconds |
+| `AuthenticationSession` | `POST /api/v1/auth/refresh`, `POST /api/v1/auth/sign-out` | Effective client IP | Sliding window | 30 requests per 60 seconds |
 | `Authenticated` | Authenticated session metadata and short-URL management except creation | JWT `sub` user ID | Fixed window | 300 requests per 60 seconds |
 | `UrlCreation` | `POST /api/v1/short-urls` | JWT `sub` user ID | Token bucket | Capacity 20; refill 20 tokens per 60 seconds |
 | `ApiKey` | Reserved for Phase 10; no endpoint selects it yet | Authenticated `api_key_id` claim | Token bucket | Capacity 600; refill 600 tokens per 60 seconds |
@@ -21,9 +21,10 @@ not charged to anonymous, authenticated, or URL-creation buckets and remains ava
 rate-limit store is unavailable. Edge-level redirect abuse controls may be added only as a
 separate, explicitly measured policy.
 
-IP policies currently use `HttpContext.Connection.RemoteIpAddress`, normalized for IPv4-mapped
-IPv6 addresses. They do not trust forwarded headers. TASK-027 owns the proxy-trust boundary; until
-then, a reverse proxy causes its directly observed address to be the partition.
+IP policies use the effective `HttpContext.Connection.RemoteIpAddress` after the explicit proxy
+trust middleware. Forwarding headers are disabled by default and are accepted only through the
+known proxy/network boundary documented in [`proxy-trust.md`](proxy-trust.md). IPv4-mapped IPv6
+addresses are normalized to native IPv4 text before the partition is hashed.
 
 ## Configuration and Validation
 

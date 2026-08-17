@@ -2,6 +2,7 @@ using FluentValidation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using UrlShortener.Api.Models;
+using UrlShortener.Api.Networking;
 using UrlShortener.Api.RateLimiting;
 using UrlShortener.Application.Dtos;
 using UrlShortener.Application.Interfaces;
@@ -178,7 +179,7 @@ public class ShortUrlsController : ControllerBase
 
     private string GetClientIp()
     {
-        return HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        return ClientIpAddress.Normalize(HttpContext.Connection.RemoteIpAddress);
     }
 
     private T EnsureValidModelAndBody<T>(T? request) where T : class

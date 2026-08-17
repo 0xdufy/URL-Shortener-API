@@ -228,11 +228,10 @@ SQL configuration enables provider-recognized transient retries and the configur
 | Missing query-range/UTC validation and ambiguous stats `totalClicks` | Phases 03 and 09 |
 | Incoming Host determines returned public URL | Phase 12 configuration/HTTP hardening |
 | Process-local redirect cache and invalidation | Phase 06 |
-| Process-local IP creation rate limiter and no proxy trust policy | Phase 07 |
+| Process-local IP creation rate limiter and no proxy trust policy | Phase 07 (superseded; see `rate-limiting.md` and `proxy-trust.md`) |
 | Synchronous analytics writes on redirect | Phase 08 |
 | Raw IP/user-agent/referrer retention without privacy/retention policy | Phases 09, 12, and 13 |
 | Swagger enabled in every environment | Phase 12 |
 | No health, metrics, or tracing endpoints | Phase 14 |
 
 Changes to these behaviors must be intentional, documented, and verified by their owning phase; Phase 00 does not silently correct them.
-

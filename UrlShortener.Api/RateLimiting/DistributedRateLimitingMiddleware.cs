@@ -1,6 +1,7 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using UrlShortener.Api.Middlewares;
+using UrlShortener.Api.Networking;
 using UrlShortener.Api.Security;
 using UrlShortener.Application.Interfaces;
 using UrlShortener.Application.RateLimiting;
@@ -59,25 +60,12 @@ public sealed class DistributedRateLimitingMiddleware
         RateLimitPolicy.Anonymous or
         RateLimitPolicy.AuthenticationRegistration or
         RateLimitPolicy.AuthenticationSignIn or
-        RateLimitPolicy.AuthenticationSession => $"ip:{GetDirectClientIp(context)}",
+        RateLimitPolicy.AuthenticationSession => $"ip:{ClientIpAddress.Normalize(context.Connection.RemoteIpAddress)}",
         RateLimitPolicy.Authenticated or
         RateLimitPolicy.UrlCreation => GetAuthenticatedUserPartition(context.User),
         RateLimitPolicy.ApiKey => GetApiKeyPartition(context.User),
         _ => throw new ArgumentOutOfRangeException(nameof(policy), policy, null)
     };
-
-    private static string GetDirectClientIp(HttpContext context)
-    {
-        var address = context.Connection.RemoteIpAddress;
-        if (address is null)
-        {
-            return "unknown";
-        }
-
-        return address.IsIPv4MappedToIPv6
-            ? address.MapToIPv4().ToString()
-            : address.ToString();
-    }
 
     private static string? GetAuthenticatedUserPartition(ClaimsPrincipal principal)
     {

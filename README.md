@@ -57,6 +57,9 @@ settings, key namespaces, connection lifetime, and outage behavior. See
 invalidation, race-safety, corruption recovery, and persistence-fallback contract.
 See [Distributed Rate Limiting](docs/rate-limiting.md) for the shared policy matrix, identities,
 algorithms, safe configuration bounds, Redis key expiry, `429` retry metadata, and outage behavior.
+See [Client IP and Reverse-Proxy Trust](docs/proxy-trust.md) before deploying behind a proxy or
+load balancer. Forwarded client IPs are disabled by default and require explicit trusted
+proxy/network configuration.
 
 ### 3) Database setup
 Restore the repository-pinned EF CLI:

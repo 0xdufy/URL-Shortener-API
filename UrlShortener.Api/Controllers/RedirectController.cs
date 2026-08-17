@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using UrlShortener.Api.Models;
+using UrlShortener.Api.Networking;
 using UrlShortener.Application.Dtos;
 using UrlShortener.Application.Interfaces;
 
@@ -26,7 +27,7 @@ public class RedirectController : ControllerBase
     [HttpGet("{shortCode}")]
     public async Task<IActionResult> RedirectToOriginal([FromRoute] string shortCode, CancellationToken ct)
     {
-        var ip = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        var ip = ClientIpAddress.Normalize(HttpContext.Connection.RemoteIpAddress);
         var userAgent = Request.Headers.UserAgent.ToString();
         var referer = Request.Headers.Referer.ToString();
 

@@ -1,8 +1,10 @@
 using System.IdentityModel.Tokens.Jwt;
+using System.Net;
 using System.Security.Cryptography;
 using System.Text.Json;
 using FluentValidation;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -10,6 +12,7 @@ using Microsoft.IdentityModel.Tokens;
 using Serilog;
 using Serilog.Events;
 using StackExchange.Redis;
+using UrlShortener.Api.Configuration;
 using UrlShortener.Api.Models;
 using UrlShortener.Api.Security;
 using UrlShortener.Application.Dtos;
@@ -36,6 +39,7 @@ public static class ServiceCollectionExtensions
         IHostEnvironment environment)
     {
         var storageSection = configuration.GetRequiredSection(StorageOptions.SectionName);
+        var proxyTrustSection = configuration.GetRequiredSection(ProxyTrustOptions.SectionName);
         var persistenceSection = configuration.GetRequiredSection(PersistenceOptions.SectionName);
         var rateLimitingSection = configuration.GetRequiredSection(DistributedRateLimitingOptions.SectionName);
         var identitySection = configuration.GetRequiredSection(IdentitySecurityOptions.SectionName);
@@ -45,6 +49,50 @@ public static class ServiceCollectionExtensions
 
         var storageOptions = storageSection.Get<StorageOptions>()
             ?? throw new InvalidOperationException($"Configuration section '{StorageOptions.SectionName}' is invalid.");
+
+        var proxyTrustOptions = proxyTrustSection.Get<ProxyTrustOptions>()
+            ?? throw new InvalidOperationException($"Configuration section '{ProxyTrustOptions.SectionName}' is invalid.");
+        services.AddOptions<ProxyTrustOptions>()
+            .Bind(proxyTrustSection)
+            .Validate(
+                options => options.ForwardLimit is >= 1 and <= 10,
+                "ProxyTrust:ForwardLimit must be between 1 and 10.")
+            .Validate(
+                options => options.KnownProxies is not null && options.KnownNetworks is not null,
+                "ProxyTrust proxy and network lists cannot be null.")
+            .Validate(
+                options => !options.Enabled ||
+                    (options.KnownProxies?.Length ?? 0) + (options.KnownNetworks?.Length ?? 0) > 0,
+                "ProxyTrust must include at least one known proxy or network when enabled.")
+            .Validate(
+                options => options.KnownProxies is not null && options.KnownProxies.All(IsValidKnownProxy),
+                "Every ProxyTrust:KnownProxies value must be a specific IPv4 or IPv6 address.")
+            .Validate(
+                options => options.KnownNetworks is not null && options.KnownNetworks.All(IsValidKnownNetwork),
+                "Every ProxyTrust:KnownNetworks value must be a bounded IPv4 or IPv6 CIDR network.")
+            .ValidateOnStart();
+
+        services.Configure<ForwardedHeadersOptions>(options =>
+        {
+            options.ForwardedHeaders = proxyTrustOptions.Enabled
+                ? ForwardedHeaders.XForwardedFor
+                : ForwardedHeaders.None;
+            options.ForwardLimit = proxyTrustOptions.ForwardLimit;
+            options.KnownProxies.Clear();
+            options.KnownIPNetworks.Clear();
+
+            foreach (var value in proxyTrustOptions.KnownProxies)
+            {
+                var address = IPAddress.Parse(value);
+                options.KnownProxies.Add(address.IsIPv4MappedToIPv6 ? address.MapToIPv4() : address);
+            }
+
+            foreach (var value in proxyTrustOptions.KnownNetworks)
+            {
+                options.KnownIPNetworks.Add(System.Net.IPNetwork.Parse(value));
+            }
+        });
+
         services.AddOptions<StorageOptions>()
             .Bind(storageSection)
             .Validate(
@@ -327,6 +375,27 @@ public static class ServiceCollectionExtensions
         {
             return false;
         }
+    }
+
+    private static bool IsValidKnownProxy(string value)
+    {
+        if (!IPAddress.TryParse(value, out var address))
+        {
+            return false;
+        }
+
+        var normalized = address.IsIPv4MappedToIPv6 ? address.MapToIPv4() : address;
+        return !normalized.Equals(IPAddress.Any) && !normalized.Equals(IPAddress.IPv6Any);
+    }
+
+    private static bool IsValidKnownNetwork(string value)
+    {
+        if (!System.Net.IPNetwork.TryParse(value, out var network) || network.PrefixLength == 0)
+        {
+            return false;
+        }
+
+        return !network.BaseAddress.IsIPv4MappedToIPv6;
     }
 
     private static bool IsValidRateLimitPolicy(RateLimitPolicyOptions options)

@@ -1,9 +1,11 @@
 using UrlShortener.Api.Extensions;
+using UrlShortener.Api.Configuration;
 using UrlShortener.Api.Middlewares;
 using UrlShortener.Api.OpenApi;
 using UrlShortener.Api.Models;
 using UrlShortener.Api.RateLimiting;
 using Microsoft.OpenApi;
+using Microsoft.Extensions.Options;
 using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -29,6 +31,27 @@ builder.Services.AddSwaggerGen(options =>
 
 var app = builder.Build();
 
+var proxyTrust = app.Services.GetRequiredService<IOptions<ProxyTrustOptions>>().Value;
+if (proxyTrust.Enabled)
+{
+    app.Logger.LogInformation(
+        "Forwarded client IP processing is enabled with {KnownProxyCount} known proxies, {KnownNetworkCount} known networks, and a {ForwardLimit}-hop limit.",
+        proxyTrust.KnownProxies.Length,
+        proxyTrust.KnownNetworks.Length,
+        proxyTrust.ForwardLimit);
+}
+else if (proxyTrust.KnownProxies.Length + proxyTrust.KnownNetworks.Length > 0)
+{
+    app.Logger.LogWarning(
+        "Forwarded client IP processing is disabled; {TrustEntryCount} configured trust entries will be ignored.",
+        proxyTrust.KnownProxies.Length + proxyTrust.KnownNetworks.Length);
+}
+else
+{
+    app.Logger.LogInformation("Forwarded client IP processing is disabled; forwarding headers will be ignored.");
+}
+
+app.UseForwardedHeaders();
 app.UseSerilogRequestLogging();
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseStatusCodePages(async statusCodeContext =>
