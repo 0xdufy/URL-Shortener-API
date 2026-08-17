@@ -28,11 +28,32 @@ public class ShortUrlAccessLogConfiguration : IEntityTypeConfiguration<ShortUrlA
         builder.Property(x => x.Referer)
             .HasMaxLength(512);
 
+        builder.Property(x => x.PseudonymousVisitorId)
+            .HasMaxLength(64)
+            .IsUnicode(false);
+
+        builder.Property(x => x.VisitorIdentityPeriodUtc)
+            .HasColumnType("date");
+
+        builder.Property(x => x.VisitorIdentityScheme)
+            .HasMaxLength(64)
+            .IsUnicode(false);
+
         builder.HasOne(x => x.ShortUrl)
             .WithMany(x => x.AccessLogs)
             .HasForeignKey(x => x.ShortUrlId)
             .OnDelete(DeleteBehavior.Cascade);
 
-        builder.HasIndex(x => new { x.ShortUrlId, x.AccessedAtUtc });
+        builder.HasIndex(x => new { x.ShortUrlId, x.AccessedAtUtc, x.Id })
+            .HasDatabaseName("IX_ShortUrlAccessLogs_ShortUrlId_AccessedAtUtc_Id");
+
+        builder.HasIndex(x => new
+            {
+                x.ShortUrlId,
+                x.VisitorIdentityPeriodUtc,
+                x.PseudonymousVisitorId
+            })
+            .HasDatabaseName("IX_ShortUrlAccessLogs_ShortUrlId_VisitorPeriod_VisitorId")
+            .HasFilter("[VisitorIdentityPeriodUtc] IS NOT NULL AND [PseudonymousVisitorId] IS NOT NULL");
     }
 }

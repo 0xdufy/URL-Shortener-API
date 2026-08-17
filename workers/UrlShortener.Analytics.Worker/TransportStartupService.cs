@@ -19,7 +19,7 @@ public sealed class TransportStartupService : IHostedService
     {
         await _topologyInitializer.EnsureTopologyAsync(cancellationToken);
         _logger.LogInformation(
-            "RabbitMQ click-event topology is available. Analytics consumption is introduced by TASK-031.");
+            "RabbitMQ click-event topology is available for analytics consumption.");
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;

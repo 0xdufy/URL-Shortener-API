@@ -8,6 +8,9 @@ The in-memory repository is supported only for local development and manual smok
 
 The committed `appsettings.json` intentionally contains no connection string and defaults to SQL Server. `appsettings.Development.json` contains a LocalDB example and enables the in-memory repository so a developer can start the API without a database. Do not commit shared, staging, or production credentials.
 
+The analytics worker always requires SQL Server, including in Development, because its event-ID
+uniqueness and transaction guarantees cannot be represented by the API's in-memory repository.
+
 ## Runtime Configuration
 
 | Key | Purpose | Constraint |
@@ -22,6 +25,8 @@ Options validation runs during startup. Invalid values fail with the full config
 permitted range. Automatic SQL retries are intentionally disabled because commit ambiguity can
 duplicate non-idempotent writes. Retry-capable URL creation uses its database-backed idempotency
 contract instead; see [Idempotency and Request Resilience](idempotency-request-resilience.md).
+The analytics consumer instead makes every delivery idempotent with the access-log primary key and
+lets the bounded RabbitMQ redelivery policy retry transient failures.
 
 ## Migration Convention
 
@@ -31,6 +36,8 @@ contract instead; see [Idempotency and Request Resilience](idempotency-request-r
 - Review the generated operations and SQL before committing.
 - Never call `Database.Migrate`, `EnsureCreated`, or an equivalent schema mutation from normal API startup.
 - Apply migrations as an explicit deployment or operator step before routing traffic to the new application version.
+- The design-time context factory uses `ConnectionStrings__SqlServer` when present and otherwise
+  targets the local-development LocalDB database; it is not used by runtime dependency injection.
 
 ## Commands
 

@@ -2,8 +2,8 @@
 
 RabbitMQ is the selected durable transport for asynchronous click analytics. The architectural
 rationale and reliability boundary are in [ADR 0004](adr/0004-rabbitmq-click-event-transport.md).
-TASK-029 provides transport plumbing only: redirects do not publish yet, and the worker does not
-persist analytics until TASK-030 and TASK-031 respectively.
+Successful redirects publish the privacy-aware TASK-030 contract, and the independently hosted
+TASK-031 worker persists accepted events to SQL Server.
 
 ## Local RabbitMQ
 
@@ -20,7 +20,7 @@ docker run --detach --name url-shortener-rabbitmq `
 Development configuration uses the image's loopback-only `guest`/`guest` account. The management UI
 is available at `http://localhost:15672`. Do not reuse that account outside local development.
 
-Start the reserved worker host with its Development profile:
+Start the analytics worker with its Development profile:
 
 ```powershell
 dotnet run --project workers/UrlShortener.Analytics.Worker
@@ -43,7 +43,7 @@ in the provider-neutral event envelope described below.
 
 Successful redirects publish event name `analytics.click`, contract version `1`. The application
 creates one stable UUID event ID per logical publication attempt. RabbitMQ also receives that ID as
-the AMQP message ID, so a future consumer can use it as its idempotency key.
+the AMQP message ID, and the analytics worker uses it as its database idempotency key.
 
 The JSON serialization uses the .NET web defaults: UTF-8, `application/json`, camel-case property
 names, UUID strings, ISO 8601 UTC timestamps, and an ISO `yyyy-MM-dd` date. A representative event
@@ -112,13 +112,50 @@ attempt within the configured RabbitMQ connection/operation bounds. It has no pr
 and does not retry an ambiguous failure. A broker rejection, timeout, or connection failure writes
 a warning containing only event ID and short-link ID, then the valid redirect remains available.
 Consequently that click may be lost; if RabbitMQ accepted it but its confirmation was lost, it may
-instead be present once and a future external replay could duplicate it. TASK-031 must deduplicate
-on event ID.
+instead be present once and a future external replay could duplicate it. The worker deduplicates
+those deliveries on event ID.
 
 This policy prioritizes redirect availability over complete analytics during a broker outage.
 Operators can observe each failed attempt in structured logs until Phase 14 adds aggregate
 telemetry. Cancellation caused by the HTTP request is propagated rather than converted into a
 publication failure.
+
+## Worker persistence and source of truth
+
+The worker requires both RabbitMQ and SQL Server and has no in-memory persistence fallback. It
+validates contract metadata, UTC timestamps, privacy scheme, identity period, and bounded string
+fields without using an HTTP or controller context. Invalid payloads and events for a short-link ID
+that no longer exists are permanent failures and go directly to the dead-letter queue.
+
+For each valid event, one SQL transaction atomically:
+
+1. Increments `ShortUrls.ClickCount` with a database-side expression.
+2. Advances `ShortUrls.LastAccessedAtUtc` only when the event timestamp is newer, so out-of-order
+   delivery cannot move it backwards.
+3. Inserts the privacy-approved `ShortUrlAccessLogs` record, using the stable event ID as its primary
+   key.
+
+The primary-key constraint is the final concurrency-safe idempotency boundary. If concurrent or
+later delivery repeats the event ID, the entire attempted transaction rolls back and the existing
+row is treated as completed. The consumer acknowledges only after that transaction commits or the
+duplicate is confirmed. Unexpected database failures return to RabbitMQ as retryable failures;
+delivery is requeued with exponential backoff and the quorum queue's configured delivery limit,
+then remains visibly in the durable dead-letter queue. Shutdown cancellation rolls back in-flight
+database work and leaves its delivery unacknowledged/requeued rather than acknowledging work that
+was not persisted.
+
+The event-backed access log is the source of truth for asynchronous click analytics;
+`ClickCount` and `LastAccessedAtUtc` are transactional projections maintained only by this worker in
+the Phase 08 target architecture. TASK-032 removes the transitional synchronous redirect recorder.
+During that ordered rollout, do not enable the consumer beside an API version that still performs
+the legacy synchronous write, because that separate record has no shared event ID.
+
+The access-log primary key supports event-ID lookup. The
+`(ShortUrlId, AccessedAtUtc, Id)` index supports link timelines and date aggregates, while
+`(ShortUrlId, VisitorIdentityPeriodUtc, PseudonymousVisitorId)` supports same-day unique-visitor
+queries without storing raw IP addresses. Processing one delivery per transaction is intentional at
+the current workload; future batching must preserve the same per-event uniqueness and atomic
+projection boundary.
 
 ## Configuration
 
