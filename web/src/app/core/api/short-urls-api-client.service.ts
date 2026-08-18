@@ -4,6 +4,10 @@ import { Observable } from 'rxjs';
 
 import { API_BASE_URL } from '../config/api-base-url.token';
 import {
+  AnalyticsSummary,
+  AnalyticsSummaryQuery,
+  AnalyticsTimeSeries,
+  AnalyticsTimeSeriesQuery,
   CreateShortUrlRequest,
   ShortUrlListQuery,
   ShortUrlListResponse,
@@ -59,6 +63,30 @@ export class ShortUrlsApiClient {
     params = this.setOptional(params, 'toUtc', query.toUtc);
 
     return this.http.get<ShortUrlStats>(`${this.resourceUrl(shortCode)}/stats`, { params });
+  }
+
+  analyticsSummary(shortCode: string, query: AnalyticsSummaryQuery): Observable<AnalyticsSummary> {
+    let params = new HttpParams().set('fromUtc', query.fromUtc).set('toUtc', query.toUtc);
+    params = this.setOptional(params, 'topReferrers', query.topReferrers);
+
+    return this.http.get<AnalyticsSummary>(`${this.resourceUrl(shortCode)}/analytics/summary`, {
+      params,
+    });
+  }
+
+  analyticsTimeSeries(
+    shortCode: string,
+    query: AnalyticsTimeSeriesQuery,
+  ): Observable<AnalyticsTimeSeries> {
+    const params = new HttpParams()
+      .set('fromUtc', query.fromUtc)
+      .set('toUtc', query.toUtc)
+      .set('granularity', query.granularity);
+
+    return this.http.get<AnalyticsTimeSeries>(
+      `${this.resourceUrl(shortCode)}/analytics/time-series`,
+      { params },
+    );
   }
 
   private resourceUrl(shortCode: string): string {

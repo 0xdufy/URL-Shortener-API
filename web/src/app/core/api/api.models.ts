@@ -145,3 +145,70 @@ export interface ShortUrlStats {
     readonly clicks: number;
   }[];
 }
+
+export interface AnalyticsRange {
+  readonly fromUtc: string;
+  readonly toUtc: string;
+  readonly boundarySemantics: '[fromUtc,toUtc)' | string;
+  readonly timeZone: 'UTC' | string;
+}
+
+export interface AnalyticsFreshness {
+  readonly consistency: 'eventual' | string;
+  readonly generatedAtUtc: string;
+  readonly lastAggregatedAtUtc: string | null;
+  readonly includesOpenBucket: boolean;
+  readonly isPartial: boolean;
+}
+
+export interface AnalyticsCategory {
+  readonly value: string;
+  readonly clicks: number;
+}
+
+export interface AnalyticsBreakdown {
+  readonly items: readonly AnalyticsCategory[];
+  readonly otherClicks: number;
+  readonly isTruncated: boolean;
+}
+
+export interface AnalyticsSummary {
+  readonly shortCode: string;
+  readonly range: AnalyticsRange;
+  readonly totalClicks: number;
+  readonly uniqueVisitorsEstimate: number;
+  readonly uniqueVisitorMethod: 'sumOfDailyPseudonymousVisitors' | string;
+  readonly referrers: AnalyticsBreakdown;
+  readonly devices: AnalyticsBreakdown;
+  readonly browsers: AnalyticsBreakdown;
+  readonly operatingSystems: AnalyticsBreakdown;
+  readonly freshness: AnalyticsFreshness;
+}
+
+export interface AnalyticsTimeBucket {
+  readonly bucketStartUtc: string;
+  readonly bucketEndUtc: string;
+  readonly clicks: number;
+}
+
+export interface AnalyticsTimeSeries {
+  readonly shortCode: string;
+  readonly range: AnalyticsRange;
+  readonly granularity: 'hour' | 'day';
+  readonly totalClicks: number;
+  readonly buckets: readonly AnalyticsTimeBucket[];
+  readonly freshness: AnalyticsFreshness;
+}
+
+export interface AnalyticsRangeQuery {
+  readonly fromUtc: string;
+  readonly toUtc: string;
+}
+
+export interface AnalyticsSummaryQuery extends AnalyticsRangeQuery {
+  readonly topReferrers?: number;
+}
+
+export interface AnalyticsTimeSeriesQuery extends AnalyticsRangeQuery {
+  readonly granularity: 'hour' | 'day';
+}

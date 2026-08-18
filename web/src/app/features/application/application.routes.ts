@@ -66,10 +66,12 @@ export const APPLICATION_ROUTES: Routes = [
         title: 'Link analytics | Shortly',
         data: {
           title: 'Link analytics',
-          description:
-            'Detailed trends and audience breakdowns will be available in the advanced analytics phase.',
+          description: 'Inspect aggregate trends and audience breakdowns for an owned link.',
         },
-        loadComponent: loadPlaceholder,
+        loadComponent: () =>
+          import('./link-analytics-page.component').then(
+            ({ LinkAnalyticsPageComponent }) => LinkAnalyticsPageComponent,
+          ),
       },
       {
         path: 'links/:shortCode',
