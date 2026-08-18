@@ -75,6 +75,9 @@ policy.
 
 ## Query and consistency rules
 
+The owner-facing route contract, UTC range rules, cardinality limits, empty response, and freshness
+model are documented in `docs/analytics-query-api.md`.
+
 Routine dashboards query `ShortUrlAnalyticsAggregates`; they do not group or count an unbounded
 `ShortUrlAccessLogs` range. Hourly rows serve short-range trends. Daily rows serve longer trends,
 breakdowns, and daily unique estimates. A range spanning partial days may use hourly overall rows

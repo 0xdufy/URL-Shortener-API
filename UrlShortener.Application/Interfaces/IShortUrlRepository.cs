@@ -21,5 +21,7 @@ public interface IShortUrlRepository
         DateTime accessedAtUtc,
         CancellationToken ct);
     Task<List<(DateTime DateUtc, int Clicks)>> GetDailyClicksAsync(Guid shortUrlId, DateTime fromUtc, DateTime toUtc, CancellationToken ct);
+    Task<AnalyticsSummaryReadModel?> GetAnalyticsSummaryAsync(AnalyticsSummaryCriteria criteria, CancellationToken ct);
+    Task<AnalyticsTimeSeriesReadModel?> GetAnalyticsTimeSeriesAsync(AnalyticsTimeSeriesCriteria criteria, CancellationToken ct);
     Task SaveChangesAsync(CancellationToken ct);
 }

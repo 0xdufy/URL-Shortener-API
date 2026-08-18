@@ -273,6 +273,141 @@ public class ShortUrlRepository : IShortUrlRepository
             .ToList();
     }
 
+    public async Task<AnalyticsSummaryReadModel?> GetAnalyticsSummaryAsync(
+        AnalyticsSummaryCriteria criteria,
+        CancellationToken ct)
+    {
+        var link = await _dbContext.ShortUrls
+            .AsNoTracking()
+            .Where(x =>
+                x.OwnerId == criteria.OwnerId &&
+                !x.IsDeleted &&
+                EF.Functions.Collate(x.ShortCode, CaseSensitiveCollation) == criteria.ShortCode)
+            .Select(x => new { x.Id, x.ShortCode })
+            .FirstOrDefaultAsync(ct);
+
+        if (link is null)
+        {
+            return null;
+        }
+
+        var overallRows = await _dbContext.ShortUrlAnalyticsAggregates
+            .AsNoTracking()
+            .Where(x =>
+                x.ShortUrlId == link.Id &&
+                x.Granularity == AnalyticsBucketGranularity.Day &&
+                x.Dimension == AnalyticsDimension.Overall &&
+                x.DimensionSchemaVersion == AnalyticsDimensionClassifier.SchemaVersion &&
+                x.DimensionValue == AnalyticsDimensionClassifier.Overall &&
+                x.BucketStartUtc >= criteria.FromUtc &&
+                x.BucketStartUtc < criteria.ToUtc)
+            .Select(x => new { x.ClickCount, x.UniqueVisitorCount, x.UpdatedAtUtc })
+            .ToListAsync(ct);
+
+        var referrers = await GetDimensionCountsAsync(
+            link.Id,
+            AnalyticsDimension.Referrer,
+            criteria.FromUtc,
+            criteria.ToUtc,
+            criteria.TopReferrers,
+            ct);
+        var devices = await GetDimensionCountsAsync(
+            link.Id,
+            AnalyticsDimension.Device,
+            criteria.FromUtc,
+            criteria.ToUtc,
+            limit: null,
+            ct);
+        var browsers = await GetDimensionCountsAsync(
+            link.Id,
+            AnalyticsDimension.Browser,
+            criteria.FromUtc,
+            criteria.ToUtc,
+            limit: null,
+            ct);
+        var operatingSystems = await GetDimensionCountsAsync(
+            link.Id,
+            AnalyticsDimension.OperatingSystem,
+            criteria.FromUtc,
+            criteria.ToUtc,
+            limit: null,
+            ct);
+
+        return new AnalyticsSummaryReadModel(
+            link.ShortCode,
+            overallRows.Sum(x => x.ClickCount),
+            overallRows.Sum(x => x.UniqueVisitorCount),
+            overallRows.Count == 0 ? null : overallRows.Max(x => x.UpdatedAtUtc),
+            referrers,
+            devices,
+            browsers,
+            operatingSystems);
+    }
+
+    public async Task<AnalyticsTimeSeriesReadModel?> GetAnalyticsTimeSeriesAsync(
+        AnalyticsTimeSeriesCriteria criteria,
+        CancellationToken ct)
+    {
+        var link = await _dbContext.ShortUrls
+            .AsNoTracking()
+            .Where(x =>
+                x.OwnerId == criteria.OwnerId &&
+                !x.IsDeleted &&
+                EF.Functions.Collate(x.ShortCode, CaseSensitiveCollation) == criteria.ShortCode)
+            .Select(x => new { x.Id, x.ShortCode })
+            .FirstOrDefaultAsync(ct);
+
+        if (link is null)
+        {
+            return null;
+        }
+
+        var rows = await _dbContext.ShortUrlAnalyticsAggregates
+            .AsNoTracking()
+            .Where(x =>
+                x.ShortUrlId == link.Id &&
+                x.Granularity == criteria.Granularity &&
+                x.Dimension == AnalyticsDimension.Overall &&
+                x.DimensionSchemaVersion == AnalyticsDimensionClassifier.SchemaVersion &&
+                x.DimensionValue == AnalyticsDimensionClassifier.Overall &&
+                x.BucketStartUtc >= criteria.FromUtc &&
+                x.BucketStartUtc < criteria.ToUtc)
+            .OrderBy(x => x.BucketStartUtc)
+            .Select(x => new AnalyticsBucketReadModel(x.BucketStartUtc, x.ClickCount, x.UpdatedAtUtc))
+            .ToListAsync(ct);
+
+        return new AnalyticsTimeSeriesReadModel(link.ShortCode, rows);
+    }
+
+    private async Task<IReadOnlyList<AnalyticsDimensionCount>> GetDimensionCountsAsync(
+        Guid shortUrlId,
+        AnalyticsDimension dimension,
+        DateTime fromUtc,
+        DateTime toUtc,
+        int? limit,
+        CancellationToken ct)
+    {
+        var query = _dbContext.ShortUrlAnalyticsAggregates
+            .AsNoTracking()
+            .Where(x =>
+                x.ShortUrlId == shortUrlId &&
+                x.Granularity == AnalyticsBucketGranularity.Day &&
+                x.Dimension == dimension &&
+                x.DimensionSchemaVersion == AnalyticsDimensionClassifier.SchemaVersion &&
+                x.BucketStartUtc >= fromUtc &&
+                x.BucketStartUtc < toUtc)
+            .GroupBy(x => x.DimensionValue)
+            .Select(group => new { Value = group.Key, Clicks = group.Sum(x => x.ClickCount) })
+            .OrderByDescending(x => x.Clicks)
+            .ThenBy(x => x.Value);
+
+        var rows = limit.HasValue
+            ? await query.Take(limit.Value).ToListAsync(ct)
+            : await query.ToListAsync(ct);
+
+        return rows.Select(x => new AnalyticsDimensionCount(x.Value, x.Clicks)).ToList();
+    }
+
     private async Task<List<(DateTime DateUtc, int Clicks)>> GetRawDailyClicksAsync(
         Guid shortUrlId,
         DateTime fromUtc,

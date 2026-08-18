@@ -241,10 +241,58 @@ public class InMemoryShortUrlRepository : IShortUrlRepository
         return Task.FromResult(new List<(DateTime DateUtc, int Clicks)>());
     }
 
+    public Task<AnalyticsSummaryReadModel?> GetAnalyticsSummaryAsync(
+        AnalyticsSummaryCriteria criteria,
+        CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+
+        lock (_sync)
+        {
+            var entity = FindOwnedActiveAnalyticsLink(criteria.ShortCode, criteria.OwnerId);
+            return Task.FromResult(entity is null
+                ? null
+                : new AnalyticsSummaryReadModel(
+                    entity.ShortCode,
+                    0,
+                    0,
+                    null,
+                    [],
+                    [],
+                    [],
+                    []));
+        }
+    }
+
+    public Task<AnalyticsTimeSeriesReadModel?> GetAnalyticsTimeSeriesAsync(
+        AnalyticsTimeSeriesCriteria criteria,
+        CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+
+        lock (_sync)
+        {
+            var entity = FindOwnedActiveAnalyticsLink(criteria.ShortCode, criteria.OwnerId);
+            return Task.FromResult(entity is null
+                ? null
+                : new AnalyticsTimeSeriesReadModel(entity.ShortCode, []));
+        }
+    }
+
     public Task SaveChangesAsync(CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
         return Task.CompletedTask;
+    }
+
+    private ShortUrl? FindOwnedActiveAnalyticsLink(string shortCode, Guid ownerId)
+    {
+        return _shortUrlIdsByCode.TryGetValue(shortCode, out var id) &&
+            _shortUrlsById.TryGetValue(id, out var entity) &&
+            entity.OwnerId == ownerId &&
+            !entity.IsDeleted
+                ? entity
+                : null;
     }
 
     private IdempotentShortUrlCreationResult ResolveIdempotencyRecord(
