@@ -2,6 +2,7 @@ using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using UrlShortener.Application.Dtos;
 using UrlShortener.Application.Interfaces;
+using UrlShortener.Domain.Analytics;
 using UrlShortener.Domain.Entities;
 
 namespace UrlShortener.Infrastructure.Persistence.Repositories;
@@ -219,6 +220,65 @@ public class ShortUrlRepository : IShortUrlRepository
 
     public async Task<List<(DateTime DateUtc, int Clicks)>> GetDailyClicksAsync(Guid shortUrlId, DateTime fromUtc, DateTime toUtc, CancellationToken ct)
     {
+        var firstFullHourUtc = StartOfHour(fromUtc);
+        if (firstFullHourUtc < fromUtc)
+        {
+            firstFullHourUtc = firstFullHourUtc.AddHours(1);
+        }
+
+        var endOfFullHoursUtc = StartOfHour(toUtc);
+        if (firstFullHourUtc >= endOfFullHoursUtc)
+        {
+            return await GetRawDailyClicksAsync(shortUrlId, fromUtc, toUtc, ct);
+        }
+
+        var aggregateRows = await _dbContext.ShortUrlAnalyticsAggregates
+            .AsNoTracking()
+            .Where(x =>
+                x.ShortUrlId == shortUrlId &&
+                x.Granularity == AnalyticsBucketGranularity.Hour &&
+                x.Dimension == AnalyticsDimension.Overall &&
+                x.DimensionSchemaVersion == AnalyticsDimensionClassifier.SchemaVersion &&
+                x.DimensionValue == AnalyticsDimensionClassifier.Overall &&
+                x.BucketStartUtc >= firstFullHourUtc &&
+                x.BucketStartUtc < endOfFullHoursUtc)
+            .GroupBy(x => x.BucketStartUtc.Date)
+            .Select(x => new
+            {
+                DateUtc = x.Key,
+                Clicks = x.Sum(row => row.ClickCount)
+            })
+            .ToListAsync(ct);
+
+        var edgeRows = await _dbContext.ShortUrlAccessLogs
+            .AsNoTracking()
+            .Where(x =>
+                x.ShortUrlId == shortUrlId &&
+                x.AccessedAtUtc >= fromUtc &&
+                x.AccessedAtUtc <= toUtc &&
+                (x.AccessedAtUtc < firstFullHourUtc || x.AccessedAtUtc >= endOfFullHoursUtc))
+            .GroupBy(x => x.AccessedAtUtc.Date)
+            .Select(x => new
+            {
+                DateUtc = x.Key,
+                Clicks = (long)x.Count()
+            })
+            .ToListAsync(ct);
+
+        return aggregateRows
+            .Concat(edgeRows)
+            .GroupBy(x => x.DateUtc)
+            .Select(x => (DateUtc: x.Key, Clicks: checked((int)x.Sum(row => row.Clicks))))
+            .OrderBy(x => x.DateUtc)
+            .ToList();
+    }
+
+    private async Task<List<(DateTime DateUtc, int Clicks)>> GetRawDailyClicksAsync(
+        Guid shortUrlId,
+        DateTime fromUtc,
+        DateTime toUtc,
+        CancellationToken ct)
+    {
         var grouped = await _dbContext.ShortUrlAccessLogs
             .AsNoTracking()
             .Where(x => x.ShortUrlId == shortUrlId && x.AccessedAtUtc >= fromUtc && x.AccessedAtUtc <= toUtc)
@@ -232,6 +292,11 @@ public class ShortUrlRepository : IShortUrlRepository
             .ToListAsync(ct);
 
         return grouped.Select(x => (x.DateUtc, x.Clicks)).ToList();
+    }
+
+    private static DateTime StartOfHour(DateTime value)
+    {
+        return new DateTime(value.Year, value.Month, value.Day, value.Hour, 0, 0, value.Kind);
     }
 
     public Task SaveChangesAsync(CancellationToken ct)

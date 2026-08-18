@@ -55,6 +55,8 @@ Use exactly one of:
 - `click-event-transport.md` defines the versioned privacy-aware click contract, redirect-facing
   publication failure policy, RabbitMQ topology/configuration, delivery, retry/dead-letter, worker
   placement, and outage behavior.
+- `analytics-data-model.md` defines supported analytics dimensions, UTC rollups, stable unknown
+  categories, same-day pseudonymous uniqueness, late-event behavior, and retention targets.
 - `redis.md` describes distributed-cache configuration, connection lifecycle, key namespaces, local setup, and outage behavior.
 - `redirect-cache.md` defines redirect outcomes, payloads, TTL, invalidation, race safety,
   corruption handling, access recording, and Redis outage fallback.

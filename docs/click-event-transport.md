@@ -132,7 +132,9 @@ For each valid event, one SQL transaction atomically:
 1. Increments `ShortUrls.ClickCount` with a database-side expression.
 2. Advances `ShortUrls.LastAccessedAtUtc` only when the event timestamp is newer, so out-of-order
    delivery cannot move it backwards.
-3. Inserts the privacy-approved `ShortUrlAccessLogs` record, using the stable event ID as its primary
+3. Updates hourly/daily analytics rollups and daily pseudonymous visitor uniqueness state using the
+   event's original UTC timestamp.
+4. Inserts the privacy-approved `ShortUrlAccessLogs` record, using the stable event ID as its primary
    key.
 
 The primary-key constraint is the final concurrency-safe idempotency boundary. If concurrent or
@@ -156,12 +158,14 @@ SQL outage can extend that delay until recovery. The fail-open publication polic
 click whose one publication attempt fails may never appear; the API does not present analytics as
 an exact real-time ledger.
 
-The access-log primary key supports event-ID lookup. The
-`(ShortUrlId, AccessedAtUtc, Id)` index supports link timelines and date aggregates, while
-`(ShortUrlId, VisitorIdentityPeriodUtc, PseudonymousVisitorId)` supports same-day unique-visitor
-queries without storing raw IP addresses. Processing one delivery per transaction is intentional at
-the current workload; future batching must preserve the same per-event uniqueness and atomic
-projection boundary.
+The access-log primary key supports event-ID lookup, and its link/time and link/daily-visitor
+indexes support bounded correction and reconciliation work. Routine dashboards use the versioned
+`ShortUrlAnalyticsAggregates` rows rather than scanning access logs; daily uniqueness is maintained
+through `ShortUrlAnalyticsDailyVisitors` without storing raw IP addresses. The complete supported
+dimensions, late-event rules, indexes, and retention targets are documented in
+[Analytics Data Model and Aggregation](analytics-data-model.md). Processing one delivery per
+transaction is intentional at the current workload; future batching must preserve the same
+per-event uniqueness and atomic projection boundary.
 
 ## Configuration
 

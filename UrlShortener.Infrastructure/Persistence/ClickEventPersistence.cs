@@ -2,6 +2,7 @@ using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using UrlShortener.Application.Interfaces;
 using UrlShortener.Application.Messaging;
+using UrlShortener.Domain.Analytics;
 using UrlShortener.Domain.Entities;
 
 namespace UrlShortener.Infrastructure.Persistence;
@@ -50,6 +51,65 @@ public sealed class ClickEventPersistence : IClickEventPersistence
                 return ClickEventPersistenceOutcome.ShortUrlNotFound;
             }
 
+            var dimensions = AnalyticsDimensionClassifier.Classify(
+                integrationEvent.Payload.ReferrerHost,
+                integrationEvent.Payload.UserAgent);
+            var hourlyBucketStartUtc = StartOfHour(accessedAtUtc);
+            var dailyBucketStartUtc = accessedAtUtc.Date;
+            var uniqueVisitorIncrement = await InsertDailyVisitorIfNewAsync(
+                integrationEvent.Payload,
+                accessedAtUtc,
+                cancellationToken);
+
+            await IncrementAggregateAsync(
+                integrationEvent.Payload.ShortUrlId,
+                hourlyBucketStartUtc,
+                AnalyticsBucketGranularity.Hour,
+                AnalyticsDimension.Overall,
+                AnalyticsDimensionClassifier.Overall,
+                uniqueVisitorIncrement: 0,
+                cancellationToken);
+            await IncrementAggregateAsync(
+                integrationEvent.Payload.ShortUrlId,
+                dailyBucketStartUtc,
+                AnalyticsBucketGranularity.Day,
+                AnalyticsDimension.Overall,
+                AnalyticsDimensionClassifier.Overall,
+                uniqueVisitorIncrement,
+                cancellationToken);
+            await IncrementAggregateAsync(
+                integrationEvent.Payload.ShortUrlId,
+                dailyBucketStartUtc,
+                AnalyticsBucketGranularity.Day,
+                AnalyticsDimension.Referrer,
+                dimensions.Referrer,
+                uniqueVisitorIncrement: 0,
+                cancellationToken);
+            await IncrementAggregateAsync(
+                integrationEvent.Payload.ShortUrlId,
+                dailyBucketStartUtc,
+                AnalyticsBucketGranularity.Day,
+                AnalyticsDimension.Device,
+                dimensions.Device,
+                uniqueVisitorIncrement: 0,
+                cancellationToken);
+            await IncrementAggregateAsync(
+                integrationEvent.Payload.ShortUrlId,
+                dailyBucketStartUtc,
+                AnalyticsBucketGranularity.Day,
+                AnalyticsDimension.Browser,
+                dimensions.Browser,
+                uniqueVisitorIncrement: 0,
+                cancellationToken);
+            await IncrementAggregateAsync(
+                integrationEvent.Payload.ShortUrlId,
+                dailyBucketStartUtc,
+                AnalyticsBucketGranularity.Day,
+                AnalyticsDimension.OperatingSystem,
+                dimensions.OperatingSystem,
+                uniqueVisitorIncrement: 0,
+                cancellationToken);
+
             _dbContext.ShortUrlAccessLogs.Add(new ShortUrlAccessLog
             {
                 Id = integrationEvent.EventId,
@@ -81,6 +141,76 @@ public sealed class ClickEventPersistence : IClickEventPersistence
 
             return ClickEventPersistenceOutcome.Duplicate;
         }
+    }
+
+    private async Task<int> InsertDailyVisitorIfNewAsync(
+        ClickEventV1 payload,
+        DateTime accessedAtUtc,
+        CancellationToken cancellationToken)
+    {
+        var insertedRows = await _dbContext.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO [ShortUrlAnalyticsDailyVisitors]
+                ([ShortUrlId], [IdentityPeriodUtc], [PseudonymousVisitorId], [IdentityScheme], [FirstSeenAtUtc])
+            SELECT
+                {payload.ShortUrlId},
+                {payload.VisitorIdentityPeriodUtc},
+                CONVERT(varchar(64), {payload.PseudonymousVisitorId}),
+                CONVERT(varchar(64), {payload.VisitorIdentityScheme}),
+                {accessedAtUtc}
+            WHERE NOT EXISTS
+            (
+                SELECT 1
+                FROM [ShortUrlAnalyticsDailyVisitors] WITH (UPDLOCK, HOLDLOCK)
+                WHERE [ShortUrlId] = {payload.ShortUrlId}
+                  AND [IdentityPeriodUtc] = {payload.VisitorIdentityPeriodUtc}
+                  AND [PseudonymousVisitorId] = CONVERT(varchar(64), {payload.PseudonymousVisitorId})
+            );
+            """, cancellationToken);
+
+        return insertedRows == 1 ? 1 : 0;
+    }
+
+    private Task IncrementAggregateAsync(
+        Guid shortUrlId,
+        DateTime bucketStartUtc,
+        AnalyticsBucketGranularity granularity,
+        AnalyticsDimension dimension,
+        string dimensionValue,
+        int uniqueVisitorIncrement,
+        CancellationToken cancellationToken)
+    {
+        var granularityValue = (byte)granularity;
+        var dimensionValueCode = (byte)dimension;
+
+        return _dbContext.Database.ExecuteSqlInterpolatedAsync($"""
+            UPDATE [ShortUrlAnalyticsAggregates] WITH (UPDLOCK, SERIALIZABLE)
+            SET [ClickCount] = [ClickCount] + 1,
+                [UniqueVisitorCount] = [UniqueVisitorCount] + {uniqueVisitorIncrement},
+                [UpdatedAtUtc] = SYSUTCDATETIME()
+            WHERE [ShortUrlId] = {shortUrlId}
+              AND [Granularity] = {granularityValue}
+              AND [Dimension] = {dimensionValueCode}
+              AND [DimensionSchemaVersion] = {AnalyticsDimensionClassifier.SchemaVersion}
+              AND [BucketStartUtc] = {bucketStartUtc}
+              AND [DimensionValue] = CONVERT(varchar(253), {dimensionValue});
+
+            IF @@ROWCOUNT = 0
+            BEGIN
+                INSERT INTO [ShortUrlAnalyticsAggregates]
+                    ([ShortUrlId], [BucketStartUtc], [Granularity], [Dimension],
+                     [DimensionSchemaVersion], [DimensionValue], [ClickCount],
+                     [UniqueVisitorCount], [UpdatedAtUtc])
+                VALUES
+                    ({shortUrlId}, {bucketStartUtc}, {granularityValue}, {dimensionValueCode},
+                     {AnalyticsDimensionClassifier.SchemaVersion}, CONVERT(varchar(253), {dimensionValue}), 1,
+                     {uniqueVisitorIncrement}, SYSUTCDATETIME());
+            END;
+            """, cancellationToken);
+    }
+
+    private static DateTime StartOfHour(DateTime value)
+    {
+        return new DateTime(value.Year, value.Month, value.Day, value.Hour, 0, 0, DateTimeKind.Utc);
     }
 
     private static bool IsDuplicateEvent(DbUpdateException exception)
