@@ -53,7 +53,25 @@ public sealed class ClickEventHandler
                 StringComparison.Ordinal) &&
             !string.IsNullOrWhiteSpace(payload.PseudonymousVisitorId) &&
             payload.PseudonymousVisitorId.Length <= MaximumVisitorIdentifierLength &&
-            (payload.ReferrerHost is null || payload.ReferrerHost.Length <= MaximumReferrerHostLength) &&
+            IsValidReferrer(payload.ReferrerHost, payload.ReferrerKind) &&
             (payload.UserAgent is null || payload.UserAgent.Length <= MaximumUserAgentLength);
+    }
+
+    private static bool IsValidReferrer(string? referrerHost, string? referrerKind)
+    {
+        if (referrerKind is null)
+        {
+            return referrerHost is null || referrerHost.Length <= MaximumReferrerHostLength;
+        }
+
+        return referrerKind switch
+        {
+            ClickEventContract.ReferrerKindDirect or ClickEventContract.ReferrerKindUnknown =>
+                referrerHost is null,
+            ClickEventContract.ReferrerKindHost =>
+                !string.IsNullOrWhiteSpace(referrerHost) &&
+                referrerHost.Length <= MaximumReferrerHostLength,
+            _ => false
+        };
     }
 }

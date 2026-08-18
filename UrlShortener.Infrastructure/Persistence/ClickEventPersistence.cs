@@ -53,6 +53,7 @@ public sealed class ClickEventPersistence : IClickEventPersistence
 
             var dimensions = AnalyticsDimensionClassifier.Classify(
                 integrationEvent.Payload.ReferrerHost,
+                integrationEvent.Payload.ReferrerKind,
                 integrationEvent.Payload.UserAgent);
             var hourlyBucketStartUtc = StartOfHour(accessedAtUtc);
             var dailyBucketStartUtc = accessedAtUtc.Date;
@@ -117,6 +118,7 @@ public sealed class ClickEventPersistence : IClickEventPersistence
                 AccessedAtUtc = accessedAtUtc,
                 UserAgent = integrationEvent.Payload.UserAgent,
                 Referer = integrationEvent.Payload.ReferrerHost,
+                ReferrerKind = integrationEvent.Payload.ReferrerKind,
                 PseudonymousVisitorId = integrationEvent.Payload.PseudonymousVisitorId,
                 VisitorIdentityPeriodUtc = integrationEvent.Payload.VisitorIdentityPeriodUtc,
                 VisitorIdentityScheme = integrationEvent.Payload.VisitorIdentityScheme

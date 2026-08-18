@@ -5,6 +5,9 @@ public static class ClickEventContract
     public const string EventName = "analytics.click";
     public const int Version = 1;
     public const string VisitorIdentityScheme = "hmac-sha256-utc-day-v1";
+    public const string ReferrerKindDirect = "direct";
+    public const string ReferrerKindHost = "host";
+    public const string ReferrerKindUnknown = "unknown";
 }
 
 public sealed record ClickEventV1(
@@ -14,4 +17,5 @@ public sealed record ClickEventV1(
     string? UserAgent,
     string PseudonymousVisitorId,
     DateOnly VisitorIdentityPeriodUtc,
-    string VisitorIdentityScheme);
+    string VisitorIdentityScheme,
+    string? ReferrerKind = null);

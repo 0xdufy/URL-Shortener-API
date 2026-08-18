@@ -1,8 +1,9 @@
 # Owner-Scoped Analytics Query API
 
-TASK-034 exposes stable chart and summary models over the version-1 aggregate schema. Both routes
-require a bearer-authenticated user and return `404 NOT_FOUND` when the short code is unknown,
-deleted, or owned by another user. This indistinguishable response prevents resource discovery.
+TASK-034 exposes stable chart and summary models over the active version-2 aggregate schema. Both
+routes require a bearer-authenticated user and return `404 NOT_FOUND` when the short code is
+unknown, deleted, or owned by another user. This indistinguishable response prevents resource
+discovery.
 
 ## Routes
 
@@ -16,7 +17,7 @@ Both routes accept `fromUtc` and `toUtc` as an optional pair. The range always m
 Summary boundaries must be UTC midnight and may span at most 366 days. When omitted, the summary
 contains the current UTC day plus the preceding 29 UTC days. `topReferrers` defaults to 10 and is
 bounded from 1 through 20. `referrers.otherClicks` preserves the count omitted by the top-N limit.
-Device, browser, and operating-system values come from the bounded version-1 classifier and are
+Device, browser, and operating-system values come from the bounded version-2 classifier and are
 returned completely rather than truncated.
 
 Time series supports only `granularity=hour` or `granularity=day`. Hourly boundaries must be whole
@@ -35,7 +36,8 @@ The summary returns:
 
 - click total from daily `Overall / All` aggregate rows;
 - `uniqueVisitorsEstimate`, calculated as the sum of daily pseudonymous unique counts;
-- top normalized referrer hosts plus the stable `Direct` and `Unknown` values when they rank;
+- top fixed referrer source labels plus the stable `Direct`, `Other`, and `Unknown` values when
+  they rank;
 - complete stable device, browser, and OS categories; and
 - freshness metadata.
 

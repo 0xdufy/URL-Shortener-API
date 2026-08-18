@@ -59,6 +59,7 @@ is:
     "shortUrlId": "9a3b7418-42de-48f4-a1f7-a4e6116e863a",
     "accessedAtUtc": "2026-08-17T12:34:56.789+00:00",
     "referrerHost": "example.com",
+    "referrerKind": "host",
     "userAgent": "ExampleBrowser/1.0",
     "pseudonymousVisitorId": "7F4ML9F_BbVkxawXTwJrJzms1k85fAQBt1b8UrbX4tI",
     "visitorIdentityPeriodUtc": "2026-08-17",
@@ -83,8 +84,10 @@ deployment overlap that can read both versions.
 
 The queue payload deliberately excludes the destination URL, short code, owner, raw IP address,
 referrer path/query/fragment, and HTTP request identifiers. An absolute HTTP(S) referrer is reduced
-to its lower-case IDN host; missing, malformed, and non-HTTP referrers become `null`. User agent is
-trimmed and capped at 256 characters because TASK-035 needs it for later category enrichment.
+to its lower-case IDN host. The optional `referrerKind` is `host`, `direct`, or `unknown`, allowing
+the worker to distinguish a missing header from a malformed, non-HTTP(S), or oversized header
+without retaining the rejected value. Its absence remains valid for click events queued before
+TASK-035. User agent is trimmed and capped at 256 characters for bounded worker enrichment.
 
 The normalized effective client IP is converted before publication to a base64url HMAC-SHA-256
 identifier. The HMAC input includes the UTC calendar date, and the date is carried explicitly in

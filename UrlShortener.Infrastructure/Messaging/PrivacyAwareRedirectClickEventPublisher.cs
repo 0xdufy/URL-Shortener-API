@@ -48,16 +48,18 @@ public sealed class PrivacyAwareRedirectClickEventPublisher : IRedirectClickEven
             }
 
             var visitorIdentityPeriodUtc = DateOnly.FromDateTime(request.AccessedAtUtc.UtcDateTime);
+            var referrer = GetReferrerMetadata(request.Referer);
             var payload = new ClickEventV1(
                 request.ShortUrlId,
                 request.AccessedAtUtc,
-                GetReferrerHost(request.Referer),
+                referrer.Host,
                 Truncate(request.UserAgent, MaximumUserAgentLength),
                 CreatePseudonymousVisitorId(
                     request.ClientIpAddress,
                     visitorIdentityPeriodUtc),
                 visitorIdentityPeriodUtc,
-                ClickEventContract.VisitorIdentityScheme);
+                ClickEventContract.VisitorIdentityScheme,
+                referrer.Kind);
             var integrationEvent = new IntegrationEvent<ClickEventV1>(
                 eventId,
                 ClickEventContract.EventName,
@@ -103,19 +105,30 @@ public sealed class PrivacyAwareRedirectClickEventPublisher : IRedirectClickEven
             .Replace('/', '_');
     }
 
-    private static string? GetReferrerHost(string? referer)
+    private static ReferrerMetadata GetReferrerMetadata(string? referer)
     {
-        if (string.IsNullOrWhiteSpace(referer) ||
-            !Uri.TryCreate(referer, UriKind.Absolute, out var uri) ||
-            (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+        if (string.IsNullOrWhiteSpace(referer))
         {
-            return null;
+            return new ReferrerMetadata(null, ClickEventContract.ReferrerKindDirect);
         }
 
-        var host = uri.IdnHost.ToLowerInvariant();
-        return host.Length <= MaximumReferrerHostLength
-            ? host
-            : null;
+        if (!Uri.TryCreate(referer, UriKind.Absolute, out var uri) ||
+            (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+        {
+            return new ReferrerMetadata(null, ClickEventContract.ReferrerKindUnknown);
+        }
+
+        try
+        {
+            var host = uri.IdnHost.ToLowerInvariant();
+            return host.Length is > 0 and <= MaximumReferrerHostLength
+                ? new ReferrerMetadata(host, ClickEventContract.ReferrerKindHost)
+                : new ReferrerMetadata(null, ClickEventContract.ReferrerKindUnknown);
+        }
+        catch (UriFormatException)
+        {
+            return new ReferrerMetadata(null, ClickEventContract.ReferrerKindUnknown);
+        }
     }
 
     private static string? Truncate(string? value, int maximumLength)
@@ -130,4 +143,6 @@ public sealed class PrivacyAwareRedirectClickEventPublisher : IRedirectClickEven
             ? trimmed
             : trimmed[..maximumLength];
     }
+
+    private sealed record ReferrerMetadata(string? Host, string Kind);
 }

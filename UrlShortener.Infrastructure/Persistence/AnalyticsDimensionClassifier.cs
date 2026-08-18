@@ -1,26 +1,60 @@
 using System.Globalization;
+using UrlShortener.Application.Messaging;
 
 namespace UrlShortener.Infrastructure.Persistence;
 
 internal static class AnalyticsDimensionClassifier
 {
-    public const short SchemaVersion = 1;
+    public const short SchemaVersion = 2;
     public const string Overall = "All";
     public const string Direct = "Direct";
     public const string Unknown = "Unknown";
     public const string Other = "Other";
 
-    public static ClickAnalyticsDimensions Classify(string? referrerHost, string? userAgent)
+    private static readonly ReferrerSource[] KnownReferrerSources =
+    [
+        new("Google", ["google.com"]),
+        new("Bing", ["bing.com"]),
+        new("DuckDuckGo", ["duckduckgo.com"]),
+        new("Yahoo", ["yahoo.com"]),
+        new("Facebook", ["facebook.com", "fb.com"]),
+        new("Instagram", ["instagram.com"]),
+        new("X / Twitter", ["x.com", "twitter.com", "t.co"]),
+        new("LinkedIn", ["linkedin.com", "lnkd.in"]),
+        new("Reddit", ["reddit.com"]),
+        new("YouTube", ["youtube.com", "youtu.be"])
+    ];
+
+    public static ClickAnalyticsDimensions Classify(
+        string? referrerHost,
+        string? referrerKind,
+        string? userAgent)
     {
         return new ClickAnalyticsDimensions(
-            ClassifyReferrer(referrerHost),
+            ClassifyReferrer(referrerHost, referrerKind),
             ClassifyDevice(userAgent),
             ClassifyBrowser(userAgent),
             ClassifyOperatingSystem(userAgent));
     }
 
-    private static string ClassifyReferrer(string? referrerHost)
+    private static string ClassifyReferrer(string? referrerHost, string? referrerKind)
     {
+        if (string.Equals(
+            referrerKind,
+            ClickEventContract.ReferrerKindUnknown,
+            StringComparison.Ordinal))
+        {
+            return Unknown;
+        }
+
+        if (string.Equals(
+            referrerKind,
+            ClickEventContract.ReferrerKindDirect,
+            StringComparison.Ordinal))
+        {
+            return Direct;
+        }
+
         if (string.IsNullOrWhiteSpace(referrerHost))
         {
             return Direct;
@@ -35,9 +69,20 @@ internal static class AnalyticsDimensionClassifier
         try
         {
             var asciiHost = new IdnMapping().GetAscii(candidate).ToLowerInvariant();
-            return Uri.CheckHostName(asciiHost) == UriHostNameType.Unknown
-                ? Unknown
-                : asciiHost;
+            if (Uri.CheckHostName(asciiHost) == UriHostNameType.Unknown)
+            {
+                return Unknown;
+            }
+
+            foreach (var source in KnownReferrerSources)
+            {
+                if (source.Domains.Any(domain => IsDomainOrSubdomain(asciiHost, domain)))
+                {
+                    return source.Label;
+                }
+            }
+
+            return Other;
         }
         catch (ArgumentException)
         {
@@ -167,6 +212,14 @@ internal static class AnalyticsDimensionClassifier
     {
         return candidates.Any(candidate => value.Contains(candidate, StringComparison.OrdinalIgnoreCase));
     }
+
+    private static bool IsDomainOrSubdomain(string host, string domain)
+    {
+        return string.Equals(host, domain, StringComparison.Ordinal) ||
+            host.EndsWith($".{domain}", StringComparison.Ordinal);
+    }
+
+    private sealed record ReferrerSource(string Label, string[] Domains);
 }
 
 internal sealed record ClickAnalyticsDimensions(
