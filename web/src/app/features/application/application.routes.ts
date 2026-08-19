@@ -101,7 +101,10 @@ export const APPLICATION_ROUTES: Routes = [
           title: 'API keys',
           description: 'Manage credentials for programmatic access to the platform.',
         },
-        loadComponent: loadPlaceholder,
+        loadComponent: () =>
+          import('./api-keys-page.component').then(
+            ({ ApiKeysPageComponent }) => ApiKeysPageComponent,
+          ),
       },
       {
         path: 'domains',

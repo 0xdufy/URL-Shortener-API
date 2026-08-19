@@ -212,3 +212,35 @@ export interface AnalyticsSummaryQuery extends AnalyticsRangeQuery {
 export interface AnalyticsTimeSeriesQuery extends AnalyticsRangeQuery {
   readonly granularity: 'hour' | 'day';
 }
+
+export type ApiKeyScope =
+  | 'shorturls:create'
+  | 'shorturls:read'
+  | 'shorturls:write'
+  | 'analytics:read';
+
+export type ApiKeyState = 'active' | 'expired' | 'revoked';
+
+export interface ApiKeyResource {
+  readonly id: string;
+  readonly name: string;
+  readonly prefix: string;
+  readonly scopes: readonly ApiKeyScope[];
+  readonly createdAtUtc: string;
+  readonly expiresAtUtc: string | null;
+  readonly lastUsedAtUtc: string | null;
+  readonly revokedAtUtc: string | null;
+  readonly state: ApiKeyState;
+  readonly replacedByApiKeyId: string | null;
+}
+
+export interface CreateApiKeyRequest {
+  readonly name: string;
+  readonly scopes: readonly ApiKeyScope[];
+  readonly expiresAtUtc: string | null;
+}
+
+export interface ApiKeyCreationResponse {
+  readonly apiKey: ApiKeyResource;
+  readonly key: string;
+}
