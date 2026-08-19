@@ -49,8 +49,9 @@ See [Idempotency and Request Resilience](docs/idempotency-request-resilience.md)
 See [Owned URL Query API](docs/owned-url-query.md) for dashboard listing, search, filters, sorting, deletion visibility, and pagination.
 See [Owned URL Mutation Lifecycle](docs/url-lifecycle.md) for update/status/delete/restore contracts. The restore window is configured with `ShortUrlLifecycle:SoftDeleteRetentionDays` and defaults to 30 days.
 See [Management API Contract](docs/management-api.md) for the finalized Angular-facing resource, collection, error, UTC timestamp, and public URL contracts.
-See [API-Key Security and Management](docs/api-key-security.md) for credential entropy and format,
-one-time secret disclosure, fixed scopes, lifecycle operations, and persistence rules.
+See [API-Key Security, Authentication, and Management](docs/api-key-security.md) for credential
+entropy and format, one-time secret disclosure, fixed scopes, programmatic authentication,
+lifecycle operations, and persistence rules.
 
 Redis infrastructure is configured separately from redirect cache policy. Development uses the
 credential-free loopback endpoint `127.0.0.1:6379`; deployed environments must provide
@@ -145,8 +146,9 @@ Access tokens are returned in JSON and expire after 10 minutes by default. Raw r
 - `DELETE /{id}`: revoke a key without deleting its audit metadata.
 - `POST /{id}/rotate`: revoke an active key and return a linked replacement exactly once.
 
-Management requires a Bearer access token and SQL-backed persistence. API-key authentication of
-programmatic requests is added in TASK-038; see [API-Key Security and Management](docs/api-key-security.md).
+Management requires a Bearer access token and SQL-backed persistence. Programmatic callers send
+`Authorization: ApiKey <credential>` to the scoped short-URL and analytics routes; see
+[API-Key Security, Authentication, and Management](docs/api-key-security.md).
 
 ### 1) GET `/api/v1/short-urls`
 Lists only the authenticated user's short URLs. It supports bounded pagination, search, active/expiration/created-date filters, optional deleted-row inclusion, and deterministic sorting. The default page is 1 with 20 items; the maximum page size is 100.

@@ -1,9 +1,8 @@
-# API-Key Security and Management
+# API-Key Security, Authentication, and Management
 
 API-key management is available only with SQL-backed persistence. Every route is under
-`/api/v1/api-keys`, requires the current user's Bearer access token, and is owner-scoped. API-key
-request authentication is introduced separately by TASK-038; creating a credential in this task
-does not make the credential an accepted authentication scheme yet.
+`/api/v1/api-keys`, requires the current user's Bearer access token, and is owner-scoped. API keys
+cannot call their own management routes or account/session routes.
 
 ## Credential format and storage
 
@@ -21,13 +20,52 @@ usk_<22-character lookup identifier>.<43-character secret>
 SQL Server stores the complete non-secret `usk_<identifier>` prefix and a fixed 32-byte SHA-256
 digest of the decoded random secret. SHA-256 is appropriate here because the input is a uniformly
 random 256-bit credential rather than a human password. The plaintext secret, its encoded form,
-and the assembled full credential are never entity properties or database columns. TASK-038 must
-decode the supplied secret, hash it, and compare the result with `CryptographicOperations.FixedTimeEquals`.
+and the assembled full credential are never entity properties or database columns. Authentication
+decodes the supplied secret, hashes it, and compares the result with
+`CryptographicOperations.FixedTimeEquals`.
 
 The full `key` value appears only in a successful create or rotate response. Those responses send
 `Cache-Control: no-store`. List responses expose only the public prefix and safe metadata. Request
 and response payload logging must not be enabled for these routes, and credentials must never be
 included in application log properties, exception messages, URLs, or query strings.
+
+## Programmatic authentication and authorization
+
+Send the credential only in the HTTP authorization header with the explicit scheme:
+
+```http
+Authorization: ApiKey usk_<lookup>.<secret>
+```
+
+The handler validates the fixed credential shape, looks up the indexed non-secret prefix, performs
+a fixed-time comparison against the persisted digest, and resolves the owner's account status in
+the same database query. Invalid syntax, an unknown prefix, a wrong secret, revocation, expiry, and
+a suspended or disabled owner all produce the same `401 AUTHENTICATION_REQUIRED` contract. Error
+bodies and authentication diagnostics never include the prefix, secret, or complete credential.
+
+A successful identity contains the immutable key owner as `sub`, the key ID as `api_key_id`, and
+one claim for each granted scope. Existing owner-scoped repositories continue to filter by `sub`,
+so scope authorization cannot expose another user's links. A known key missing the required scope
+receives `403 FORBIDDEN`; missing, deleted, or cross-owner resources retain the normal concealed
+`404 NOT_FOUND` response.
+
+| Scope | Permitted programmatic operations |
+|---|---|
+| `shorturls:create` | `POST /api/v1/short-urls` |
+| `shorturls:read` | List short URLs and get one owned short URL |
+| `shorturls:write` | Update, enable/disable, delete, or restore an owned short URL |
+| `analytics:read` | Read owned-link stats, summaries, and time series |
+
+Bearer JWT callers continue to use the same short-URL and analytics routes without API-key scope
+claims. API-key management and browser account/session operations remain Bearer-only. Swagger
+describes Bearer and API-key authentication as alternatives only on scoped programmatic routes and
+states the required API-key scope on each operation.
+
+Authenticated API-key calls use the distributed `ApiKey` rate-limit policy and a partition derived
+from `api_key_id`, distinct from the owner's browser-session partition and other keys. A successful
+use updates `LastUsedAtUtc` at most once per five-minute interval. The initial lookup supplies the
+last-used value, and a conditional SQL update prevents concurrent requests from producing repeated
+writes inside that interval.
 
 ## Names, limits, and scopes
 

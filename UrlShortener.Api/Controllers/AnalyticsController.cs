@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using UrlShortener.Api.Models;
 using UrlShortener.Api.RateLimiting;
+using UrlShortener.Api.Security;
 using UrlShortener.Application.Dtos;
 using UrlShortener.Application.Interfaces;
 using UrlShortener.Application.RateLimiting;
@@ -10,7 +11,7 @@ using UrlShortener.Application.RateLimiting;
 namespace UrlShortener.Api.Controllers;
 
 [ApiController]
-[Authorize]
+[Authorize(Policy = ApiKeyAuthorizationPolicies.AnalyticsRead)]
 [DistributedRateLimit(RateLimitPolicy.Authenticated)]
 [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status429TooManyRequests)]
 [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status503ServiceUnavailable)]

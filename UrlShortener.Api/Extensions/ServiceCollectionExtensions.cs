@@ -3,6 +3,7 @@ using System.Net;
 using System.Security.Cryptography;
 using System.Text.Json;
 using FluentValidation;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
@@ -278,18 +279,42 @@ public static class ServiceCollectionExtensions
             services.AddScoped<IAccessTokenIssuer, JwtAccessTokenIssuer>();
             services.AddScoped<IAuthenticationService, IdentityAuthenticationService>();
             services.AddScoped<IApiKeyRepository, ApiKeyRepository>();
+            services.AddScoped<IApiKeyAuthenticationRepository, ApiKeyRepository>();
             services.AddScoped<IApiKeyService, ApiKeyService>();
         }
         else
         {
             services.AddSingleton<IAuthenticationService, UnavailableAuthenticationService>();
+            services.AddSingleton<IApiKeyAuthenticationRepository, UnavailableApiKeyAuthenticationRepository>();
             services.AddSingleton<IApiKeyService, UnavailableApiKeyService>();
         }
 
         var signingKey = ResolveSigningKey(storageOptions, identityOptions);
 
         services
-            .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+            .AddAuthentication(options =>
+            {
+                options.DefaultScheme = ApiKeyAuthenticationDefaults.CompositeScheme;
+                options.DefaultAuthenticateScheme = ApiKeyAuthenticationDefaults.CompositeScheme;
+                options.DefaultChallengeScheme = ApiKeyAuthenticationDefaults.CompositeScheme;
+                options.DefaultForbidScheme = ApiKeyAuthenticationDefaults.CompositeScheme;
+            })
+            .AddPolicyScheme(
+                ApiKeyAuthenticationDefaults.CompositeScheme,
+                ApiKeyAuthenticationDefaults.CompositeScheme,
+                options =>
+                {
+                    options.ForwardDefaultSelector = context =>
+                    {
+                        var authorization = context.Request.Headers.Authorization;
+                        return authorization.Count == 1 &&
+                            authorization[0]?.StartsWith(
+                                ApiKeyAuthenticationDefaults.AuthorizationHeaderPrefix,
+                                StringComparison.OrdinalIgnoreCase) == true
+                            ? ApiKeyAuthenticationDefaults.AuthenticationScheme
+                            : JwtBearerDefaults.AuthenticationScheme;
+                    };
+                })
             .AddJwtBearer(options =>
             {
                 options.MapInboundClaims = false;
@@ -335,8 +360,34 @@ public static class ServiceCollectionExtensions
                         "FORBIDDEN",
                         "The authenticated identity is not permitted to perform this operation.")
                 };
-            });
-        services.AddAuthorization();
+            })
+            .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, ApiKeyAuthenticationHandler>(
+                ApiKeyAuthenticationDefaults.AuthenticationScheme,
+                _ => { });
+        services.AddSingleton<IAuthorizationHandler, ApiKeyScopeAuthorizationHandler>();
+        services.AddAuthorization(options =>
+        {
+            options.DefaultPolicy = new AuthorizationPolicyBuilder(JwtBearerDefaults.AuthenticationScheme)
+                .RequireAuthenticatedUser()
+                .Build();
+
+            AddApiKeyScopePolicy(
+                options,
+                ApiKeyAuthorizationPolicies.ShortUrlsCreate,
+                ApiKeyScopeNames.ShortUrlsCreate);
+            AddApiKeyScopePolicy(
+                options,
+                ApiKeyAuthorizationPolicies.ShortUrlsRead,
+                ApiKeyScopeNames.ShortUrlsRead);
+            AddApiKeyScopePolicy(
+                options,
+                ApiKeyAuthorizationPolicies.ShortUrlsWrite,
+                ApiKeyScopeNames.ShortUrlsWrite);
+            AddApiKeyScopePolicy(
+                options,
+                ApiKeyAuthorizationPolicies.AnalyticsRead,
+                ApiKeyScopeNames.AnalyticsRead);
+        });
 
         services.AddAntiforgery(options =>
         {
@@ -410,6 +461,19 @@ public static class ServiceCollectionExtensions
         services.AddSingleton(new ApiKeyManagementSettings());
 
         return services;
+    }
+
+    private static void AddApiKeyScopePolicy(
+        AuthorizationOptions options,
+        string policyName,
+        string scope)
+    {
+        options.AddPolicy(policyName, policy =>
+        {
+            policy.AddAuthenticationSchemes(ApiKeyAuthenticationDefaults.CompositeScheme);
+            policy.RequireAuthenticatedUser();
+            policy.AddRequirements(new ApiKeyScopeRequirement(scope));
+        });
     }
 
     private static bool IsValidSigningKey(string value)

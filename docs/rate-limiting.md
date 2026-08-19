@@ -14,7 +14,7 @@ server time, rather than an API process clock, defines windows and refill calcul
 | `AuthenticationSession` | `POST /api/v1/auth/refresh`, `POST /api/v1/auth/sign-out` | Effective client IP | Sliding window | 30 requests per 60 seconds |
 | `Authenticated` | Authenticated session metadata and short-URL management except creation | JWT `sub` user ID | Fixed window | 300 requests per 60 seconds |
 | `UrlCreation` | `POST /api/v1/short-urls` | JWT `sub` user ID | Token bucket | Capacity 20; refill 20 tokens per 60 seconds |
-| `ApiKey` | Reserved for Phase 10; no endpoint selects it yet | Authenticated `api_key_id` claim | Token bucket | Capacity 600; refill 600 tokens per 60 seconds |
+| `ApiKey` | Scoped short-URL and analytics calls authenticated by API key | Authenticated `api_key_id` claim | Token bucket | Capacity 600; refill 600 tokens per 60 seconds |
 
 The public `GET /r/{shortCode}` hot path deliberately has no rate-limit metadata. It is therefore
 not charged to anonymous, authenticated, or URL-creation buckets and remains available when the
@@ -84,6 +84,9 @@ The shared connection uses the bounded Redis timeouts and fail-fast backlog beha
 
 Requests with absent or invalid credentials are left to authentication/authorization and return the
 normal `401` contract; a user or API-key partition is never invented from an invalid credential.
+Once an API key authenticates, its `ApiKey` policy overrides the endpoint's browser-session policy,
+so each key has a partition distinct from both its owner's JWT `sub` partition and the owner's other
+API keys.
 
 ## Two-Instance Verification
 

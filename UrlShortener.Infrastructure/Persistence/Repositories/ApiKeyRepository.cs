@@ -5,7 +5,7 @@ using UrlShortener.Domain.Entities;
 
 namespace UrlShortener.Infrastructure.Persistence.Repositories;
 
-public sealed class ApiKeyRepository : IApiKeyRepository
+public sealed class ApiKeyRepository : IApiKeyRepository, IApiKeyAuthenticationRepository
 {
     private readonly AppDbContext _dbContext;
 
@@ -29,6 +29,42 @@ public sealed class ApiKeyRepository : IApiKeyRepository
         return _dbContext.ApiKeys
             .AsNoTracking()
             .FirstOrDefaultAsync(apiKey => apiKey.Id == apiKeyId && apiKey.OwnerId == ownerId, ct);
+    }
+
+    public Task<ApiKeyAuthenticationRecord?> FindByPrefixAsync(string keyPrefix, CancellationToken ct)
+    {
+        return (
+                from apiKey in _dbContext.ApiKeys.AsNoTracking()
+                join owner in _dbContext.Users.AsNoTracking() on apiKey.OwnerId equals owner.Id
+                where apiKey.KeyPrefix == keyPrefix
+                select new ApiKeyAuthenticationRecord(
+                    apiKey.Id,
+                    apiKey.OwnerId,
+                    apiKey.SecretHash,
+                    apiKey.Scopes,
+                    apiKey.ExpiresAtUtc,
+                    apiKey.RevokedAtUtc,
+                    apiKey.LastUsedAtUtc,
+                    owner.Status))
+            .SingleOrDefaultAsync(ct);
+    }
+
+    public async Task RecordUseIfStaleAsync(
+        Guid apiKeyId,
+        DateTime usedAtUtc,
+        TimeSpan minimumWriteInterval,
+        CancellationToken ct)
+    {
+        var staleBeforeUtc = usedAtUtc.Subtract(minimumWriteInterval);
+        await _dbContext.ApiKeys
+            .Where(apiKey =>
+                apiKey.Id == apiKeyId &&
+                apiKey.RevokedAtUtc == null &&
+                (apiKey.ExpiresAtUtc == null || apiKey.ExpiresAtUtc > usedAtUtc) &&
+                (apiKey.LastUsedAtUtc == null || apiKey.LastUsedAtUtc <= staleBeforeUtc))
+            .ExecuteUpdateAsync(
+                setters => setters.SetProperty(apiKey => apiKey.LastUsedAtUtc, usedAtUtc),
+                ct);
     }
 
     public async Task<ApiKeyCreationOutcome> TryCreateAsync(

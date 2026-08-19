@@ -56,10 +56,17 @@ builder.Services.AddSwaggerGen(options =>
         In = ParameterLocation.Header,
         Description = "Enter the JWT access token returned by the authentication endpoints."
     });
-    options.OperationFilter<AuthorizeOperationFilter>();
+    options.AddSecurityDefinition("ApiKey", new OpenApiSecurityScheme
+    {
+        Type = SecuritySchemeType.ApiKey,
+        Name = "Authorization",
+        In = ParameterLocation.Header,
+        Description = "Enter an API-key credential as: ApiKey usk_<lookup>.<secret>"
+    });
     options.OperationFilter<OwnedShortUrlListOperationFilter>();
     options.OperationFilter<ShortUrlLifecycleOperationFilter>();
     options.OperationFilter<AnalyticsOperationFilter>();
+    options.OperationFilter<AuthorizeOperationFilter>();
 });
 
 var app = builder.Build();

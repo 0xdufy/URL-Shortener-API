@@ -10,8 +10,6 @@ namespace UrlShortener.Api.RateLimiting;
 
 public sealed class DistributedRateLimitingMiddleware
 {
-    public const string ApiKeyIdClaim = "api_key_id";
-
     private readonly RequestDelegate _next;
 
     public DistributedRateLimitingMiddleware(RequestDelegate next)
@@ -31,6 +29,11 @@ public sealed class DistributedRateLimitingMiddleware
         {
             await _next(context);
             return;
+        }
+
+        if (context.User.HasClaim(claim => claim.Type == ApiKeyAuthenticationDefaults.ApiKeyIdClaim))
+        {
+            selectedPolicy = RateLimitPolicy.ApiKey;
         }
 
         var partitionKey = ResolvePartitionKey(context, selectedPolicy.Value);
@@ -87,7 +90,7 @@ public sealed class DistributedRateLimitingMiddleware
             return null;
         }
 
-        var apiKeyId = principal.FindFirstValue(ApiKeyIdClaim);
+        var apiKeyId = principal.FindFirstValue(ApiKeyAuthenticationDefaults.ApiKeyIdClaim);
         return string.IsNullOrWhiteSpace(apiKeyId)
             ? null
             : $"api-key:{apiKeyId}";

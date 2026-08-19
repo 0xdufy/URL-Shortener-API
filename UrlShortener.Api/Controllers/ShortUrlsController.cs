@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using UrlShortener.Api.Models;
 using UrlShortener.Api.Networking;
 using UrlShortener.Api.RateLimiting;
+using UrlShortener.Api.Security;
 using UrlShortener.Application.Dtos;
 using UrlShortener.Application.Interfaces;
 using UrlShortener.Application.RateLimiting;
@@ -11,7 +12,6 @@ using UrlShortener.Application.RateLimiting;
 namespace UrlShortener.Api.Controllers;
 
 [ApiController]
-[Authorize]
 [DistributedRateLimit(RateLimitPolicy.Authenticated)]
 [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status429TooManyRequests)]
 [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status503ServiceUnavailable)]
@@ -47,6 +47,7 @@ public class ShortUrlsController : ControllerBase
     /// clickCount, or expiresAt; sortDirection accepts asc or desc.
     /// </remarks>
     [HttpGet]
+    [Authorize(Policy = ApiKeyAuthorizationPolicies.ShortUrlsRead)]
     [ProducesResponseType(typeof(ShortUrlListResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status401Unauthorized)]
@@ -59,6 +60,7 @@ public class ShortUrlsController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Policy = ApiKeyAuthorizationPolicies.ShortUrlsCreate)]
     [RequestSizeLimit(CreateRequestBodyLimitBytes)]
     [DistributedRateLimit(RateLimitPolicy.UrlCreation)]
     [Consumes("application/json")]
@@ -87,6 +89,7 @@ public class ShortUrlsController : ControllerBase
     }
 
     [HttpGet("{shortCode}")]
+    [Authorize(Policy = ApiKeyAuthorizationPolicies.ShortUrlsRead)]
     [ProducesResponseType(typeof(ShortUrlResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
@@ -102,6 +105,7 @@ public class ShortUrlsController : ControllerBase
     }
 
     [HttpPut("{shortCode}")]
+    [Authorize(Policy = ApiKeyAuthorizationPolicies.ShortUrlsWrite)]
     [Consumes("application/json")]
     [ProducesResponseType(typeof(ShortUrlResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
@@ -125,6 +129,7 @@ public class ShortUrlsController : ControllerBase
     }
 
     [HttpPatch("{shortCode}/status")]
+    [Authorize(Policy = ApiKeyAuthorizationPolicies.ShortUrlsWrite)]
     [Consumes("application/json")]
     [ProducesResponseType(typeof(ShortUrlResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
@@ -146,6 +151,7 @@ public class ShortUrlsController : ControllerBase
     }
 
     [HttpDelete("{shortCode}")]
+    [Authorize(Policy = ApiKeyAuthorizationPolicies.ShortUrlsWrite)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
@@ -161,6 +167,7 @@ public class ShortUrlsController : ControllerBase
     }
 
     [HttpPost("{shortCode}/restore")]
+    [Authorize(Policy = ApiKeyAuthorizationPolicies.ShortUrlsWrite)]
     [ProducesResponseType(typeof(ShortUrlResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
@@ -172,6 +179,7 @@ public class ShortUrlsController : ControllerBase
     }
 
     [HttpGet("{shortCode}/stats")]
+    [Authorize(Policy = ApiKeyAuthorizationPolicies.AnalyticsRead)]
     [ProducesResponseType(typeof(StatsResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
