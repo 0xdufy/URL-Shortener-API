@@ -16,6 +16,7 @@ using UrlShortener.Api.Configuration;
 using UrlShortener.Api.Models;
 using UrlShortener.Api.Security;
 using UrlShortener.Application.Dtos;
+using UrlShortener.Application.ApiKeys;
 using UrlShortener.Application.Interfaces;
 using UrlShortener.Application.Services;
 using UrlShortener.Application.Validators;
@@ -27,6 +28,7 @@ using UrlShortener.Infrastructure.Persistence;
 using UrlShortener.Infrastructure.Persistence.Repositories;
 using UrlShortener.Infrastructure.RateLimiting;
 using UrlShortener.Infrastructure.Services;
+using UrlShortener.Infrastructure.Security;
 
 namespace UrlShortener.Api.Extensions;
 
@@ -275,10 +277,13 @@ public static class ServiceCollectionExtensions
 
             services.AddScoped<IAccessTokenIssuer, JwtAccessTokenIssuer>();
             services.AddScoped<IAuthenticationService, IdentityAuthenticationService>();
+            services.AddScoped<IApiKeyRepository, ApiKeyRepository>();
+            services.AddScoped<IApiKeyService, ApiKeyService>();
         }
         else
         {
             services.AddSingleton<IAuthenticationService, UnavailableAuthenticationService>();
+            services.AddSingleton<IApiKeyService, UnavailableApiKeyService>();
         }
 
         var signingKey = ResolveSigningKey(storageOptions, identityOptions);
@@ -401,6 +406,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IShortUrlCache, ShortUrlCache>();
         services.AddSingleton<IDistributedRateLimiter, RedisDistributedRateLimiter>();
         services.AddSingleton<IDateTimeProvider, DateTimeProvider>();
+        services.AddSingleton<IApiKeyCredentialGenerator, ApiKeyCredentialGenerator>();
+        services.AddSingleton(new ApiKeyManagementSettings());
 
         return services;
     }

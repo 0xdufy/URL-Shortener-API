@@ -45,6 +45,8 @@ Use exactly one of:
 - `authentication.md` describes account and session behavior.
 - `authorization.md` defines protected management routes, owner-scoped access, and the 401/403/404 concealment policy.
 - `management-api.md` is the finalized Angular-facing management resource, pagination/filter, error, UTC timestamp, and public URL contract.
+- `api-key-security.md` defines API-key format/entropy, hash-only persistence, fixed scopes,
+  owner-scoped management, one-time disclosure, revocation, and rotation.
 - `idempotency-request-resilience.md` defines caller-scoped URL-create retries, retention,
   request/timeout bounds, safe dependency retry behavior, cancellation, and manual scenarios.
 - `persistence.md` describes storage configuration and migration operations.

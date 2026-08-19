@@ -163,6 +163,24 @@ public class ExceptionHandlingMiddleware
             code = "AUTHENTICATION_UNAVAILABLE";
             message = "Authentication is temporarily unavailable.";
         }
+        else if (exception is ApiKeyLimitExceededException)
+        {
+            statusCode = StatusCodes.Status409Conflict;
+            code = "API_KEY_LIMIT_REACHED";
+            message = "The maximum number of active API keys has been reached.";
+        }
+        else if (exception is ApiKeyStateConflictException)
+        {
+            statusCode = StatusCodes.Status409Conflict;
+            code = "API_KEY_STATE_CONFLICT";
+            message = "The API key is not in a state that permits this operation.";
+        }
+        else if (exception is ApiKeyManagementUnavailableException)
+        {
+            statusCode = StatusCodes.Status503ServiceUnavailable;
+            code = "API_KEY_MANAGEMENT_UNAVAILABLE";
+            message = "API-key management requires SQL-backed persistence.";
+        }
         else if (exception is CsrfValidationException or AntiforgeryValidationException)
         {
             statusCode = StatusCodes.Status400BadRequest;

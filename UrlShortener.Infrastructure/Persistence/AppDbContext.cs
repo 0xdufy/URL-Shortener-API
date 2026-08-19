@@ -19,6 +19,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Guid
     public DbSet<ShortUrlCreationIdempotencyRecord> ShortUrlCreationIdempotencyRecords =>
         Set<ShortUrlCreationIdempotencyRecord>();
     public DbSet<RefreshSession> RefreshSessions => Set<RefreshSession>();
+    public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

@@ -12,4 +12,5 @@ public sealed class ApplicationUser : IdentityUser<Guid>
 
     public ICollection<RefreshSession> RefreshSessions { get; } = [];
     public ICollection<ShortUrl> ShortUrls { get; } = [];
+    public ICollection<ApiKey> ApiKeys { get; } = [];
 }

@@ -1,0 +1,5 @@
+namespace UrlShortener.Application.Exceptions;
+
+public sealed class ApiKeyLimitExceededException : Exception
+{
+}
