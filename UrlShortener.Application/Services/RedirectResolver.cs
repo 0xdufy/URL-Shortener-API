@@ -1,4 +1,5 @@
 using UrlShortener.Application.Dtos;
+using UrlShortener.Application.CustomDomains;
 using UrlShortener.Application.Interfaces;
 
 namespace UrlShortener.Application.Services;
@@ -11,35 +12,45 @@ public sealed class RedirectResolver : IRedirectResolver
     private readonly IShortUrlCache _shortUrlCache;
     private readonly IRedirectClickEventPublisher _clickEventPublisher;
     private readonly IDateTimeProvider _dateTimeProvider;
+    private readonly ShortUrlContractSettings _contractSettings;
 
     public RedirectResolver(
         IShortUrlRepository repository,
         IShortUrlCache shortUrlCache,
         IRedirectClickEventPublisher clickEventPublisher,
-        IDateTimeProvider dateTimeProvider)
+        IDateTimeProvider dateTimeProvider,
+        ShortUrlContractSettings contractSettings)
     {
         _repository = repository;
         _shortUrlCache = shortUrlCache;
         _clickEventPublisher = clickEventPublisher;
         _dateTimeProvider = dateTimeProvider;
+        _contractSettings = contractSettings;
     }
 
     public async Task<RedirectResolutionResult> ResolveAsync(
+        string effectiveHost,
         string shortCode,
         string ipAddress,
         string? userAgent,
         string? referer,
         CancellationToken ct)
     {
+        var route = CreateRoute(effectiveHost, shortCode);
+        if (route == null)
+        {
+            return RedirectResolutionResult.NotFound(RedirectResolutionSource.Persistence);
+        }
+
         var accessedAtUtc = _dateTimeProvider.UtcNow;
-        var cachedModel = await _shortUrlCache.GetAsync(shortCode, ct);
+        var cachedModel = await _shortUrlCache.GetAsync(route.Host, shortCode, ct);
 
         if (cachedModel != null)
         {
             var cachedCandidate = CreateCandidate(cachedModel);
             var cachedStatus = EvaluateState(cachedCandidate, accessedAtUtc);
             if (cachedStatus == RedirectResolutionStatus.Resolved &&
-                await IsRedirectCurrentAsync(cachedCandidate, accessedAtUtc, ct))
+                await IsRedirectCurrentAsync(cachedCandidate, route, accessedAtUtc, ct))
             {
                 await PublishClickEventAsync(
                     cachedCandidate.ShortUrlId,
@@ -53,12 +64,12 @@ public sealed class RedirectResolver : IRedirectResolver
                     RedirectResolutionSource.DistributedCache);
             }
 
-            await _shortUrlCache.RemoveAsync(shortCode, ct);
+            await _shortUrlCache.RemoveAsync(route.Host, shortCode, ct);
         }
 
         for (var attempt = 0; attempt < MaximumPersistenceAttempts; attempt++)
         {
-            var redirect = await _repository.GetRedirectByShortCodeAsync(shortCode, ct);
+            var redirect = await _repository.GetRedirectAsync(route, ct);
             if (redirect == null)
             {
                 return RedirectResolutionResult.NotFound(RedirectResolutionSource.Persistence);
@@ -76,7 +87,7 @@ public sealed class RedirectResolver : IRedirectResolver
                 return RedirectResolutionResult.Expired(RedirectResolutionSource.Persistence);
             }
 
-            if (await IsRedirectCurrentAsync(persistedCandidate, accessedAtUtc, ct))
+            if (await IsRedirectCurrentAsync(persistedCandidate, route, accessedAtUtc, ct))
             {
                 await PublishClickEventAsync(
                     persistedCandidate.ShortUrlId,
@@ -91,7 +102,7 @@ public sealed class RedirectResolver : IRedirectResolver
                     RedirectResolutionSource.Persistence);
             }
 
-            await _shortUrlCache.RemoveAsync(redirect.ShortCode, ct);
+            await _shortUrlCache.RemoveAsync(route.Host, redirect.ShortCode, ct);
         }
 
         return RedirectResolutionResult.NotFound(RedirectResolutionSource.Persistence);
@@ -99,11 +110,13 @@ public sealed class RedirectResolver : IRedirectResolver
 
     private Task<bool> IsRedirectCurrentAsync(
         RedirectCandidate candidate,
+        RedirectRouteIdentity route,
         DateTime accessedAtUtc,
         CancellationToken ct)
     {
         return _repository.IsRedirectCurrentAsync(
             candidate.ShortUrlId,
+            route,
             candidate.OriginalUrl,
             candidate.ExpiresAtUtc,
             accessedAtUtc,
@@ -140,7 +153,30 @@ public sealed class RedirectResolver : IRedirectResolver
             return;
         }
 
-        await _shortUrlCache.SetAsync(redirect.ShortCode, model, absoluteExpirationUtc, ct);
+        await _shortUrlCache.SetAsync(
+            redirect.RoutingHost,
+            redirect.ShortCode,
+            model,
+            absoluteExpirationUtc,
+            ct);
+    }
+
+    private RedirectRouteIdentity? CreateRoute(string effectiveHost, string shortCode)
+    {
+        if (string.IsNullOrWhiteSpace(effectiveHost))
+        {
+            return null;
+        }
+
+        var candidate = effectiveHost.Trim().TrimEnd('.');
+        if (candidate.Equals(_contractSettings.DefaultHost, StringComparison.OrdinalIgnoreCase))
+        {
+            return new RedirectRouteIdentity(_contractSettings.DefaultHost, shortCode, true);
+        }
+
+        return CustomDomainHostNormalizer.TryNormalize(candidate, out var normalizedHost, out _)
+            ? new RedirectRouteIdentity(normalizedHost, shortCode, false)
+            : null;
     }
 
     private static RedirectResolutionStatus EvaluateState(RedirectCandidate candidate, DateTime nowUtc)

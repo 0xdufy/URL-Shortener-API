@@ -181,6 +181,30 @@ public class ExceptionHandlingMiddleware
             code = "API_KEY_MANAGEMENT_UNAVAILABLE";
             message = "API-key management requires SQL-backed persistence.";
         }
+        else if (exception is CustomDomainConflictException)
+        {
+            statusCode = StatusCodes.Status409Conflict;
+            code = "CUSTOM_DOMAIN_ALREADY_CLAIMED";
+            message = "The normalized hostname is already registered.";
+        }
+        else if (exception is CustomDomainReservedException)
+        {
+            statusCode = StatusCodes.Status400BadRequest;
+            code = "CUSTOM_DOMAIN_RESERVED";
+            message = "The hostname belongs to a protected platform namespace and cannot be registered.";
+        }
+        else if (exception is CustomDomainStateConflictException)
+        {
+            statusCode = StatusCodes.Status409Conflict;
+            code = "CUSTOM_DOMAIN_STATE_CONFLICT";
+            message = "The custom domain changed state and does not permit this operation. Refresh it and try again.";
+        }
+        else if (exception is CustomDomainUnavailableException)
+        {
+            statusCode = StatusCodes.Status409Conflict;
+            code = "CUSTOM_DOMAIN_UNAVAILABLE";
+            message = "The selected custom domain is not owned, verified, and enabled.";
+        }
         else if (exception is CsrfValidationException or AntiforgeryValidationException)
         {
             statusCode = StatusCodes.Status400BadRequest;

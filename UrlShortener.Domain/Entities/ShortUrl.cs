@@ -18,6 +18,8 @@ public class ShortUrl
 
     public Guid Id { get; set; }
     public Guid? OwnerId { get; private set; }
+    public Guid? CustomDomainId { get; private set; }
+    public CustomDomain? CustomDomain { get; private set; }
     public string OriginalUrl { get; set; } = string.Empty;
     public string ShortCode { get; set; } = string.Empty;
     public DateTime CreatedAtUtc { get; set; }
@@ -28,4 +30,18 @@ public class ShortUrl
     public long ClickCount { get; set; }
     public DateTime? LastAccessedAtUtc { get; set; }
     public ICollection<ShortUrlAccessLog> AccessLogs { get; set; } = new List<ShortUrlAccessLog>();
+
+    public void RouteThrough(CustomDomain? customDomain)
+    {
+        if (customDomain != null &&
+            (!OwnerId.HasValue || customDomain.OwnerId != OwnerId.Value))
+        {
+            throw new ArgumentException(
+                "A short URL can only use a custom domain owned by the same account.",
+                nameof(customDomain));
+        }
+
+        CustomDomainId = customDomain?.Id;
+        CustomDomain = customDomain;
+    }
 }

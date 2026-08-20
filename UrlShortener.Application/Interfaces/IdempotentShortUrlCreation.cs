@@ -14,6 +14,7 @@ public enum IdempotentShortUrlCreationOutcome
     Created,
     Existing,
     ShortCodeConflict,
+    CustomDomainUnavailable,
     RequestConflict
 }
 

@@ -47,6 +47,10 @@ Use exactly one of:
 - `management-api.md` is the finalized Angular-facing management resource, pagination/filter, error, UTC timestamp, and public URL contract.
 - `api-key-security.md` defines API-key format/entropy, hash-only persistence, fixed scopes,
   owner-scoped management, one-time disclosure, revocation, and rotation.
+- `custom-domain-verification.md` defines hostname normalization and claim uniqueness, reserved
+  namespaces, DNS TXT evidence, verification states/API operations, and controlled manual checks.
+- `custom-domain-routing.md` defines branded-link selection, host-aware redirect/cache identity,
+  disable/reverification behavior, canonical URL generation, and DNS/TLS/proxy responsibilities.
 - `idempotency-request-resilience.md` defines caller-scoped URL-create retries, retention,
   request/timeout bounds, safe dependency retry behavior, cancellation, and manual scenarios.
 - `persistence.md` describes storage configuration and migration operations.

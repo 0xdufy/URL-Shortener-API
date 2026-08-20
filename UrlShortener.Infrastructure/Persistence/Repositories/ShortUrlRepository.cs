@@ -4,6 +4,7 @@ using UrlShortener.Application.Dtos;
 using UrlShortener.Application.Interfaces;
 using UrlShortener.Domain.Analytics;
 using UrlShortener.Domain.Entities;
+using UrlShortener.Domain.CustomDomains;
 
 namespace UrlShortener.Infrastructure.Persistence.Repositories;
 
@@ -75,6 +76,8 @@ public class ShortUrlRepository : IShortUrlRepository
                 Id = x.Id,
                 OriginalUrl = x.OriginalUrl,
                 ShortCode = x.ShortCode,
+                CustomDomainId = x.CustomDomainId,
+                CustomDomainHost = x.CustomDomain == null ? null : x.CustomDomain.NormalizedHost,
                 CreatedAtUtc = x.CreatedAtUtc,
                 ExpiresAtUtc = x.ExpiresAtUtc,
                 IsActive = x.IsActive,
@@ -93,6 +96,11 @@ public class ShortUrlRepository : IShortUrlRepository
 
     public async Task<ShortUrlCreationResult> TryCreateAsync(ShortUrl entity, CancellationToken ct)
     {
+        if (!await IsCustomDomainAvailableAsync(entity, ct))
+        {
+            return ShortUrlCreationResult.CustomDomainUnavailable;
+        }
+
         await _dbContext.ShortUrls.AddAsync(entity, ct);
 
         try
@@ -118,6 +126,12 @@ public class ShortUrlRepository : IShortUrlRepository
         if (existing != null)
         {
             return ResolveIdempotencyRecord(existing, idempotency.RequestHash);
+        }
+
+        if (!await IsCustomDomainAvailableAsync(entity, ct))
+        {
+            return new IdempotentShortUrlCreationResult(
+                IdempotentShortUrlCreationOutcome.CustomDomainUnavailable);
         }
 
         var record = new ShortUrlCreationIdempotencyRecord(
@@ -169,6 +183,7 @@ public class ShortUrlRepository : IShortUrlRepository
     public Task<ShortUrl?> GetOwnedByShortCodeNotDeletedAsync(string shortCode, Guid ownerId, CancellationToken ct)
     {
         return _dbContext.ShortUrls
+            .Include(x => x.CustomDomain)
             .FirstOrDefaultAsync(
                 x => EF.Functions.Collate(x.ShortCode, CaseSensitiveCollation) == shortCode &&
                     x.OwnerId == ownerId &&
@@ -179,19 +194,32 @@ public class ShortUrlRepository : IShortUrlRepository
     public Task<ShortUrl?> GetOwnedByShortCodeAsync(string shortCode, Guid ownerId, CancellationToken ct)
     {
         return _dbContext.ShortUrls
+            .Include(x => x.CustomDomain)
             .FirstOrDefaultAsync(
                 x => EF.Functions.Collate(x.ShortCode, CaseSensitiveCollation) == shortCode &&
                     x.OwnerId == ownerId,
                 ct);
     }
 
-    public Task<RedirectLookupModel?> GetRedirectByShortCodeAsync(string shortCode, CancellationToken ct)
+    public Task<RedirectLookupModel?> GetRedirectAsync(
+        RedirectRouteIdentity route,
+        CancellationToken ct)
     {
-        return _dbContext.ShortUrls
+        var query = _dbContext.ShortUrls
             .AsNoTracking()
-            .Where(x => EF.Functions.Collate(x.ShortCode, CaseSensitiveCollation) == shortCode)
+            .Where(x => EF.Functions.Collate(x.ShortCode, CaseSensitiveCollation) == route.ShortCode);
+
+        query = route.IsDefaultHost
+            ? query.Where(x => x.CustomDomainId == null)
+            : query.Where(x =>
+                x.CustomDomain != null &&
+                x.CustomDomain.Status == CustomDomainStatus.Verified &&
+                x.CustomDomain.NormalizedHost == route.Host);
+
+        return query
             .Select(x => new RedirectLookupModel(
                 x.Id,
+                route.Host,
                 x.ShortCode,
                 x.OriginalUrl,
                 x.ExpiresAtUtc,
@@ -202,21 +230,40 @@ public class ShortUrlRepository : IShortUrlRepository
 
     public Task<bool> IsRedirectCurrentAsync(
         Guid shortUrlId,
+        RedirectRouteIdentity route,
         string expectedOriginalUrl,
         DateTime? expectedExpiresAtUtc,
         DateTime accessedAtUtc,
         CancellationToken ct)
     {
-        return _dbContext.ShortUrls
+        var query = _dbContext.ShortUrls
             .AsNoTracking()
-            .AnyAsync(x =>
+            .Where(x =>
                 x.Id == shortUrlId &&
                 EF.Functions.Collate(x.OriginalUrl, BinaryCollation) == expectedOriginalUrl &&
                 x.ExpiresAtUtc == expectedExpiresAtUtc &&
                 !x.IsDeleted &&
                 x.IsActive &&
-                (!x.ExpiresAtUtc.HasValue || x.ExpiresAtUtc.Value > accessedAtUtc), ct);
+                (!x.ExpiresAtUtc.HasValue || x.ExpiresAtUtc.Value > accessedAtUtc));
+
+        query = route.IsDefaultHost
+            ? query.Where(x => x.CustomDomainId == null)
+            : query.Where(x =>
+                x.CustomDomain != null &&
+                x.CustomDomain.Status == CustomDomainStatus.Verified &&
+                x.CustomDomain.NormalizedHost == route.Host);
+
+        return query.AnyAsync(ct);
     }
+
+    public async Task<IReadOnlyList<string>> ListShortCodesForCustomDomainAsync(
+        Guid customDomainId,
+        CancellationToken ct) =>
+        await _dbContext.ShortUrls
+            .AsNoTracking()
+            .Where(x => x.CustomDomainId == customDomainId)
+            .Select(x => x.ShortCode)
+            .ToListAsync(ct);
 
     public async Task<List<(DateTime DateUtc, int Clicks)>> GetDailyClicksAsync(Guid shortUrlId, DateTime fromUtc, DateTime toUtc, CancellationToken ct)
     {
@@ -460,10 +507,27 @@ public class ShortUrlRepository : IShortUrlRepository
         return _dbContext.ShortUrlCreationIdempotencyRecords
             .AsNoTracking()
             .Include(x => x.ShortUrl)
+            .ThenInclude(x => x.CustomDomain)
             .FirstOrDefaultAsync(
                 x => x.OwnerId == idempotency.OwnerId &&
                     x.KeyHash == idempotency.KeyHash &&
                     x.ExpiresAtUtc > idempotency.CreatedAtUtc,
+                ct);
+    }
+
+    private Task<bool> IsCustomDomainAvailableAsync(ShortUrl entity, CancellationToken ct)
+    {
+        if (!entity.CustomDomainId.HasValue)
+        {
+            return Task.FromResult(true);
+        }
+
+        return _dbContext.CustomDomains
+            .AsNoTracking()
+            .AnyAsync(x =>
+                x.Id == entity.CustomDomainId.Value &&
+                x.OwnerId == entity.OwnerId &&
+                x.Status == CustomDomainStatus.Verified,
                 ct);
     }
 

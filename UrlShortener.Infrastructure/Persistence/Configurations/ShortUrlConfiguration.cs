@@ -14,6 +14,7 @@ public class ShortUrlConfiguration : IEntityTypeConfiguration<ShortUrl>
         builder.HasKey(x => x.Id);
 
         builder.Property(x => x.OwnerId);
+        builder.Property(x => x.CustomDomainId);
 
         builder.Property(x => x.OriginalUrl)
             .IsRequired()
@@ -57,10 +58,19 @@ public class ShortUrlConfiguration : IEntityTypeConfiguration<ShortUrl>
         builder.HasIndex(x => x.ExpiresAtUtc);
         builder.HasIndex(x => new { x.OwnerId, x.IsDeleted, x.CreatedAtUtc, x.Id })
             .HasDatabaseName("IX_ShortUrls_OwnerId_IsDeleted_CreatedAtUtc_Id");
+        builder.HasIndex(x => new { x.CustomDomainId, x.ShortCode })
+            .HasDatabaseName("IX_ShortUrls_CustomDomainId_ShortCode");
 
         builder.HasOne<ApplicationUser>()
             .WithMany(x => x.ShortUrls)
             .HasForeignKey(x => x.OwnerId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne(x => x.CustomDomain)
+            .WithMany(x => x.ShortUrls)
+            .HasForeignKey(x => new { x.CustomDomainId, x.OwnerId })
+            .HasPrincipalKey(x => new { x.Id, x.OwnerId })
+            .OnDelete(DeleteBehavior.Restrict);
+
     }
 }

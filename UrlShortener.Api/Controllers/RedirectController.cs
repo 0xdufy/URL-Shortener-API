@@ -33,6 +33,7 @@ public class RedirectController : ControllerBase
 
         var startedAt = Stopwatch.GetTimestamp();
         var result = await _redirectResolver.ResolveAsync(
+            Request.Host.Host,
             shortCode,
             ip,
             string.IsNullOrWhiteSpace(userAgent) ? null : userAgent,

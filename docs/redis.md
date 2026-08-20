@@ -54,8 +54,8 @@ has exactly three segments:
 ```
 
 Feature adapters append a feature-owned, versioned key. Redirect caching uses
-`redirect:v1:<short-code>`, producing a physical key such as
-`url-shortener:production:v1:redirect:v1:Ab12Cd34`. Rate limiting uses
+`redirect:v2:<routing-host>:<short-code>`, producing a physical key such as
+`url-shortener:production:v1:redirect:v2:sho.rt:Ab12Cd34`. Rate limiting uses
 `ratelimit:v1:<policy>:<sha256-partition>`. A schema-incompatible provider namespace must increment
 the provider version; a feature-only incompatibility increments its feature version. Adapters must
 not use unprefixed global keys or duplicate the application/environment prefix themselves.

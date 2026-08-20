@@ -21,8 +21,10 @@ For a valid key:
 - A retry with the same material payload returns `201 Created`, the same logical link ID and short
   code, and the same management `Location`. The resource representation reflects its current
   persisted state if it was changed after creation.
-- Reusing the key with a different `originalUrl`, effective `customAlias`, or `expiresAtUtc` returns
-  `409 IDEMPOTENCY_KEY_REUSED`. Blank aliases have the same create meaning as an omitted alias.
+- Reusing the key with a different `originalUrl`, effective `customAlias`, `customDomainId`, or
+  `expiresAtUtc` returns `409 IDEMPOTENCY_KEY_REUSED`. Blank aliases have the same create meaning
+  as an omitted alias. Requests without a custom domain retain the version 1 canonical hash;
+  branded requests use version 2 so pre-TASK-041 platform-link retries remain compatible.
 
 Records expire after `Idempotency:RetentionHours`, which defaults to 24 and is startup-validated
 from 1 through 168 hours. Every keyed create removes expired records through the indexed expiry

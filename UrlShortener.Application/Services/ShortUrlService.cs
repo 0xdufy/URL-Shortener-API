@@ -16,6 +16,7 @@ public class ShortUrlService : IShortUrlService
     private readonly IShortUrlRepository _repository;
     private readonly IShortCodeGenerator _shortCodeGenerator;
     private readonly IShortUrlCache _shortUrlCache;
+    private readonly ICustomDomainRepository _customDomainRepository;
     private readonly IDateTimeProvider _dateTimeProvider;
     private readonly ICurrentUserContext _currentUserContext;
     private readonly ShortUrlLifecycleSettings _lifecycleSettings;
@@ -26,6 +27,7 @@ public class ShortUrlService : IShortUrlService
         IShortUrlRepository repository,
         IShortCodeGenerator shortCodeGenerator,
         IShortUrlCache shortUrlCache,
+        ICustomDomainRepository customDomainRepository,
         IDateTimeProvider dateTimeProvider,
         ICurrentUserContext currentUserContext,
         ShortUrlLifecycleSettings lifecycleSettings,
@@ -35,6 +37,7 @@ public class ShortUrlService : IShortUrlService
         _repository = repository;
         _shortCodeGenerator = shortCodeGenerator;
         _shortUrlCache = shortUrlCache;
+        _customDomainRepository = customDomainRepository;
         _dateTimeProvider = dateTimeProvider;
         _currentUserContext = currentUserContext;
         _lifecycleSettings = lifecycleSettings;
@@ -64,7 +67,7 @@ public class ShortUrlService : IShortUrlService
         var result = await _repository.ListOwnedAsync(criteria, ct);
         foreach (var item in result.Items)
         {
-            item.ShortUrl = BuildPublicShortUrl(item.ShortCode);
+            item.ShortUrl = BuildPublicShortUrl(item.ShortCode, item.CustomDomainHost);
             NormalizeResponseTimestamps(item);
         }
 
@@ -107,12 +110,13 @@ public class ShortUrlService : IShortUrlService
         _ = clientIp;
         var ownerId = RequireCurrentUserId();
         var nowUtc = _dateTimeProvider.UtcNow;
+        var customDomain = await ResolveCustomDomainAsync(req.CustomDomainId, ownerId, ct);
         var idempotency = CreateIdempotencyContext(ownerId, req, idempotencyKey, nowUtc);
         ShortUrl entity;
 
         if (!string.IsNullOrWhiteSpace(req.CustomAlias))
         {
-            entity = CreateEntity(req, req.CustomAlias, ownerId, nowUtc);
+            entity = CreateEntity(req, req.CustomAlias, ownerId, customDomain, nowUtc);
             var creationResult = await TryCreateAsync(entity, idempotency, ct);
             if (creationResult.Outcome == IdempotentShortUrlCreationOutcome.ShortCodeConflict)
             {
@@ -128,11 +132,16 @@ public class ShortUrlService : IShortUrlService
             for (var attempt = 0; attempt < MaxGeneratedShortCodeAttempts; attempt++)
             {
                 var generatedCode = _shortCodeGenerator.Generate(GeneratedShortCodeLength);
-                var candidate = CreateEntity(req, generatedCode, ownerId, nowUtc);
+                var candidate = CreateEntity(req, generatedCode, ownerId, customDomain, nowUtc);
                 var creationResult = await TryCreateAsync(candidate, idempotency, ct);
                 if (creationResult.Outcome == IdempotentShortUrlCreationOutcome.RequestConflict)
                 {
                     throw new IdempotencyKeyReusedException();
+                }
+
+                if (creationResult.Outcome == IdempotentShortUrlCreationOutcome.CustomDomainUnavailable)
+                {
+                    throw new CustomDomainUnavailableException();
                 }
 
                 if (creationResult.Outcome is
@@ -168,9 +177,14 @@ public class ShortUrlService : IShortUrlService
         }
 
         var outcome = await _repository.TryCreateAsync(entity, ct);
-        return outcome == ShortUrlCreationResult.Created
-            ? new IdempotentShortUrlCreationResult(IdempotentShortUrlCreationOutcome.Created, entity)
-            : new IdempotentShortUrlCreationResult(IdempotentShortUrlCreationOutcome.ShortCodeConflict);
+        return outcome switch
+        {
+            ShortUrlCreationResult.Created =>
+                new IdempotentShortUrlCreationResult(IdempotentShortUrlCreationOutcome.Created, entity),
+            ShortUrlCreationResult.CustomDomainUnavailable =>
+                new IdempotentShortUrlCreationResult(IdempotentShortUrlCreationOutcome.CustomDomainUnavailable),
+            _ => new IdempotentShortUrlCreationResult(IdempotentShortUrlCreationOutcome.ShortCodeConflict)
+        };
     }
 
     private static ShortUrl ResolveCreatedEntity(
@@ -180,6 +194,11 @@ public class ShortUrlService : IShortUrlService
         if (result.Outcome == IdempotentShortUrlCreationOutcome.RequestConflict)
         {
             throw new IdempotencyKeyReusedException();
+        }
+
+        if (result.Outcome == IdempotentShortUrlCreationOutcome.CustomDomainUnavailable)
+        {
+            throw new CustomDomainUnavailableException();
         }
 
         return result.Outcome switch
@@ -213,12 +232,19 @@ public class ShortUrlService : IShortUrlService
     {
         var alias = string.IsNullOrWhiteSpace(request.CustomAlias) ? string.Empty : request.CustomAlias;
         var expiresAtTicks = request.ExpiresAtUtc?.Ticks.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
-        var canonicalPayload = string.Join(
-            '\n',
-            "v1",
+        var fields = new List<string>
+        {
+            request.CustomDomainId.HasValue ? "v2" : "v1",
             Convert.ToBase64String(Encoding.UTF8.GetBytes(request.OriginalUrl)),
             Convert.ToBase64String(Encoding.UTF8.GetBytes(alias)),
-            expiresAtTicks);
+            expiresAtTicks
+        };
+        if (request.CustomDomainId.HasValue)
+        {
+            fields.Add(request.CustomDomainId.Value.ToString("D"));
+        }
+
+        var canonicalPayload = string.Join('\n', fields);
 
         return HashText(canonicalPayload);
     }
@@ -230,9 +256,10 @@ public class ShortUrlService : IShortUrlService
         CreateShortUrlRequest request,
         string shortCode,
         Guid ownerId,
+        CustomDomain? customDomain,
         DateTime nowUtc)
     {
-        return new ShortUrl(ownerId)
+        var entity = new ShortUrl(ownerId)
         {
             Id = Guid.NewGuid(),
             OriginalUrl = request.OriginalUrl,
@@ -243,6 +270,8 @@ public class ShortUrlService : IShortUrlService
             IsDeleted = false,
             ClickCount = 0
         };
+        entity.RouteThrough(customDomain);
+        return entity;
     }
 
     public async Task<ShortUrlResponse?> GetAsync(string shortCode, CancellationToken ct)
@@ -269,11 +298,19 @@ public class ShortUrlService : IShortUrlService
             return null;
         }
 
+        var oldRoutingHost = GetRoutingHost(entity);
+        var customDomain = await ResolveCustomDomainAsync(request.CustomDomainId, ownerId, ct);
         entity.OriginalUrl = request.OriginalUrl;
         entity.ExpiresAtUtc = request.ExpiresAtUtc;
+        entity.RouteThrough(customDomain);
+        var newRoutingHost = GetRoutingHost(entity);
 
         await _repository.SaveChangesAsync(ct);
-        await _shortUrlCache.RemoveAsync(shortCode, ct);
+        await _shortUrlCache.RemoveAsync(oldRoutingHost, shortCode, ct);
+        if (!newRoutingHost.Equals(oldRoutingHost, StringComparison.Ordinal))
+        {
+            await _shortUrlCache.RemoveAsync(newRoutingHost, shortCode, ct);
+        }
 
         return ToShortUrlResponse(entity);
     }
@@ -290,7 +327,7 @@ public class ShortUrlService : IShortUrlService
         entity.IsActive = isActive;
 
         await _repository.SaveChangesAsync(ct);
-        await _shortUrlCache.RemoveAsync(shortCode, ct);
+        await RemoveCacheAsync(entity, ct);
 
         return ToShortUrlResponse(entity);
     }
@@ -308,7 +345,7 @@ public class ShortUrlService : IShortUrlService
         entity.DeletedAtUtc = _dateTimeProvider.UtcNow;
 
         await _repository.SaveChangesAsync(ct);
-        await _shortUrlCache.RemoveAsync(shortCode, ct);
+        await RemoveCacheAsync(entity, ct);
 
         return true;
     }
@@ -337,7 +374,7 @@ public class ShortUrlService : IShortUrlService
         entity.DeletedAtUtc = null;
 
         await _repository.SaveChangesAsync(ct);
-        await _shortUrlCache.RemoveAsync(shortCode, ct);
+        await RemoveCacheAsync(entity, ct);
 
         return ToShortUrlResponse(entity);
     }
@@ -421,14 +458,26 @@ public class ShortUrlService : IShortUrlService
 
     private async Task CacheRedirectAsync(ShortUrl entity, DateTime nowUtc, CancellationToken ct)
     {
-        var model = RedirectCachePolicy.CreateModel(entity);
+        if (entity.CustomDomainId.HasValue &&
+            entity.CustomDomain is not { CanServeBrandedLinks: true })
+        {
+            return;
+        }
+
+        var routingHost = GetRoutingHost(entity);
+        var model = RedirectCachePolicy.CreateModel(entity, routingHost);
         var absoluteExpirationUtc = CalculateCacheExpiration(model.ExpiresAtUtc, nowUtc);
         if (absoluteExpirationUtc <= nowUtc)
         {
             return;
         }
 
-        await _shortUrlCache.SetAsync(entity.ShortCode, model, absoluteExpirationUtc, ct);
+        await _shortUrlCache.SetAsync(
+            routingHost,
+            entity.ShortCode,
+            model,
+            absoluteExpirationUtc,
+            ct);
     }
 
     private static DateTime CalculateCacheExpiration(DateTime? linkExpiresAtUtc, DateTime nowUtc)
@@ -442,7 +491,9 @@ public class ShortUrlService : IShortUrlService
             Id = entity.Id,
             OriginalUrl = entity.OriginalUrl,
             ShortCode = entity.ShortCode,
-            ShortUrl = BuildPublicShortUrl(entity.ShortCode),
+            ShortUrl = BuildPublicShortUrl(entity.ShortCode, entity.CustomDomain?.NormalizedHost),
+            CustomDomainId = entity.CustomDomainId,
+            CustomDomainHost = entity.CustomDomain?.NormalizedHost,
             CreatedAtUtc = AsUtc(entity.CreatedAtUtc),
             ExpiresAtUtc = AsUtc(entity.ExpiresAtUtc),
             IsActive = entity.IsActive,
@@ -455,8 +506,43 @@ public class ShortUrlService : IShortUrlService
         };
     }
 
-    private string BuildPublicShortUrl(string shortCode) =>
-        $"{_contractSettings.PublicBaseUrl}/r/{Uri.EscapeDataString(shortCode)}";
+    private string BuildPublicShortUrl(string shortCode, string? customDomainHost)
+    {
+        var origin = customDomainHost == null
+            ? _contractSettings.PublicBaseUrl
+            : $"{_contractSettings.CustomDomainScheme}://{customDomainHost}";
+        return $"{origin}/r/{Uri.EscapeDataString(shortCode)}";
+    }
+
+    private string GetRoutingHost(ShortUrl entity) =>
+        entity.CustomDomain?.NormalizedHost ?? _contractSettings.DefaultHost;
+
+    private Task RemoveCacheAsync(ShortUrl entity, CancellationToken ct) =>
+        _shortUrlCache.RemoveAsync(GetRoutingHost(entity), entity.ShortCode, ct);
+
+    private async Task<CustomDomain?> ResolveCustomDomainAsync(
+        Guid? customDomainId,
+        Guid ownerId,
+        CancellationToken ct)
+    {
+        if (!customDomainId.HasValue)
+        {
+            return null;
+        }
+
+        if (customDomainId.Value == Guid.Empty)
+        {
+            throw new CustomDomainUnavailableException();
+        }
+
+        var customDomain = await _customDomainRepository.GetOwnedAsync(customDomainId.Value, ownerId, ct);
+        if (customDomain is not { CanServeBrandedLinks: true })
+        {
+            throw new CustomDomainUnavailableException();
+        }
+
+        return customDomain;
+    }
 
     private static DateTime AsUtc(DateTime value) =>
         value.Kind == DateTimeKind.Utc ? value : DateTime.SpecifyKind(value, DateTimeKind.Utc);

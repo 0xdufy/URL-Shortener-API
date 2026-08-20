@@ -17,6 +17,12 @@ controllers. This task enables only `X-Forwarded-For`; `X-Forwarded-Host` and
 `X-Forwarded-Proto` do not influence the request. Canonical public short URLs continue to come
 from `PublicUrls:BaseUrl` rather than any request header.
 
+TASK-041 custom-domain redirects use the actual `Host` field received by Kestrel, not
+`X-Forwarded-Host`. A reverse proxy serving branded links must preserve the original public
+hostname in `Host` while routing `/r/{shortCode}` to the API. Branded `shortUrl` values are
+generated from the verified persisted hostname and `PublicUrls:CustomDomainScheme`; platform URLs
+continue to use `PublicUrls:BaseUrl`. Neither path trusts forwarding headers for URL generation.
+
 ASP.NET Core evaluates `X-Forwarded-For` from right to left, beginning with the direct socket peer.
 It advances only while the current proxy address is trusted and stops after `ForwardLimit`
 entries. An untrusted direct peer therefore cannot replace the effective IP by sending its own

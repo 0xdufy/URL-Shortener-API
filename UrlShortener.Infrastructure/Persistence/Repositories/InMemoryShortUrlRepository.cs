@@ -68,6 +68,8 @@ public class InMemoryShortUrlRepository : IShortUrlRepository
                     Id = x.Id,
                     OriginalUrl = x.OriginalUrl,
                     ShortCode = x.ShortCode,
+                    CustomDomainId = x.CustomDomainId,
+                    CustomDomainHost = x.CustomDomain?.NormalizedHost,
                     CreatedAtUtc = x.CreatedAtUtc,
                     ExpiresAtUtc = x.ExpiresAtUtc,
                     IsActive = x.IsActive,
@@ -89,6 +91,11 @@ public class InMemoryShortUrlRepository : IShortUrlRepository
 
         lock (_sync)
         {
+            if (!IsCustomDomainAvailable(entity))
+            {
+                return Task.FromResult(ShortUrlCreationResult.CustomDomainUnavailable);
+            }
+
             if (_shortUrlIdsByCode.ContainsKey(entity.ShortCode))
             {
                 return Task.FromResult(ShortUrlCreationResult.ShortCodeConflict);
@@ -128,6 +135,12 @@ public class InMemoryShortUrlRepository : IShortUrlRepository
             {
                 return Task.FromResult(new IdempotentShortUrlCreationResult(
                     IdempotentShortUrlCreationOutcome.ShortCodeConflict));
+            }
+
+            if (!IsCustomDomainAvailable(entity))
+            {
+                return Task.FromResult(new IdempotentShortUrlCreationResult(
+                    IdempotentShortUrlCreationOutcome.CustomDomainUnavailable));
             }
 
             var record = new ShortUrlCreationIdempotencyRecord(
@@ -186,17 +199,21 @@ public class InMemoryShortUrlRepository : IShortUrlRepository
         }
     }
 
-    public Task<RedirectLookupModel?> GetRedirectByShortCodeAsync(string shortCode, CancellationToken ct)
+    public Task<RedirectLookupModel?> GetRedirectAsync(
+        RedirectRouteIdentity route,
+        CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
 
         lock (_sync)
         {
-            if (_shortUrlIdsByCode.TryGetValue(shortCode, out var id) &&
-                _shortUrlsById.TryGetValue(id, out var entity))
+            if (_shortUrlIdsByCode.TryGetValue(route.ShortCode, out var id) &&
+                _shortUrlsById.TryGetValue(id, out var entity) &&
+                MatchesRoute(entity, route))
             {
                 return Task.FromResult<RedirectLookupModel?>(new RedirectLookupModel(
                     entity.Id,
+                    route.Host,
                     entity.ShortCode,
                     entity.OriginalUrl,
                     entity.ExpiresAtUtc,
@@ -210,6 +227,7 @@ public class InMemoryShortUrlRepository : IShortUrlRepository
 
     public Task<bool> IsRedirectCurrentAsync(
         Guid shortUrlId,
+        RedirectRouteIdentity route,
         string expectedOriginalUrl,
         DateTime? expectedExpiresAtUtc,
         DateTime accessedAtUtc,
@@ -225,6 +243,7 @@ public class InMemoryShortUrlRepository : IShortUrlRepository
             }
 
             var isCurrent =
+                MatchesRoute(entity, route) &&
                 string.Equals(entity.OriginalUrl, expectedOriginalUrl, StringComparison.Ordinal) &&
                 entity.ExpiresAtUtc == expectedExpiresAtUtc &&
                 !entity.IsDeleted &&
@@ -232,6 +251,22 @@ public class InMemoryShortUrlRepository : IShortUrlRepository
                 (!entity.ExpiresAtUtc.HasValue || entity.ExpiresAtUtc.Value > accessedAtUtc);
 
             return Task.FromResult(isCurrent);
+        }
+    }
+
+    public Task<IReadOnlyList<string>> ListShortCodesForCustomDomainAsync(
+        Guid customDomainId,
+        CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+
+        lock (_sync)
+        {
+            IReadOnlyList<string> codes = _shortUrlsById.Values
+                .Where(x => x.CustomDomainId == customDomainId)
+                .Select(x => x.ShortCode)
+                .ToList();
+            return Task.FromResult(codes);
         }
     }
 
@@ -284,6 +319,18 @@ public class InMemoryShortUrlRepository : IShortUrlRepository
         ct.ThrowIfCancellationRequested();
         return Task.CompletedTask;
     }
+
+    private static bool IsCustomDomainAvailable(ShortUrl entity) =>
+        !entity.CustomDomainId.HasValue ||
+        entity.CustomDomain is { CanServeBrandedLinks: true } customDomain &&
+        customDomain.Id == entity.CustomDomainId.Value &&
+        customDomain.OwnerId == entity.OwnerId;
+
+    private static bool MatchesRoute(ShortUrl entity, RedirectRouteIdentity route) =>
+        route.IsDefaultHost
+            ? entity.CustomDomainId == null
+            : entity.CustomDomain is { CanServeBrandedLinks: true } customDomain &&
+                customDomain.NormalizedHost.Equals(route.Host, StringComparison.Ordinal);
 
     private ShortUrl? FindOwnedActiveAnalyticsLink(string shortCode, Guid ownerId)
     {

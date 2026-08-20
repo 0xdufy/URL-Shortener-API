@@ -8,7 +8,7 @@ namespace UrlShortener.Infrastructure.Caching;
 
 public sealed class ShortUrlCache : IShortUrlCache
 {
-    private const string CacheKeyPrefix = "redirect:v1:";
+    private const string CacheKeyPrefix = "redirect:v2:";
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
 
     private readonly IDistributedCache _distributedCache;
@@ -22,18 +22,21 @@ public sealed class ShortUrlCache : IShortUrlCache
         _logger = logger;
     }
 
-    public async Task<ShortUrlCacheModel?> GetAsync(string shortCode, CancellationToken ct)
+    public async Task<ShortUrlCacheModel?> GetAsync(
+        string routingHost,
+        string shortCode,
+        CancellationToken ct)
     {
         try
         {
-            var payload = await _distributedCache.GetAsync(GetKey(shortCode), ct);
+            var payload = await _distributedCache.GetAsync(GetKey(routingHost, shortCode), ct);
             if (payload == null)
             {
                 return null;
             }
 
             var model = JsonSerializer.Deserialize<ShortUrlCacheModel>(payload, SerializerOptions);
-            if (model != null && IsValid(model))
+            if (model != null && IsValid(model, routingHost))
             {
                 return model;
             }
@@ -41,7 +44,7 @@ public sealed class ShortUrlCache : IShortUrlCache
             _logger.LogWarning(
                 "Ignoring redirect cache entry for short code {ShortCode} because its schema or data is invalid.",
                 shortCode);
-            await RemoveAsync(shortCode, ct);
+            await RemoveAsync(routingHost, shortCode, ct);
             return null;
         }
         catch (JsonException exception)
@@ -50,7 +53,7 @@ public sealed class ShortUrlCache : IShortUrlCache
                 exception,
                 "Ignoring malformed redirect cache entry for short code {ShortCode}.",
                 shortCode);
-            await RemoveAsync(shortCode, ct);
+            await RemoveAsync(routingHost, shortCode, ct);
             return null;
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
@@ -64,6 +67,7 @@ public sealed class ShortUrlCache : IShortUrlCache
     }
 
     public async Task SetAsync(
+        string routingHost,
         string shortCode,
         ShortUrlCacheModel model,
         DateTime absoluteExpirationUtc,
@@ -83,7 +87,7 @@ public sealed class ShortUrlCache : IShortUrlCache
                 AbsoluteExpiration = new DateTimeOffset(normalizedExpirationUtc)
             };
 
-            await _distributedCache.SetAsync(GetKey(shortCode), payload, options, ct);
+            await _distributedCache.SetAsync(GetKey(routingHost, shortCode), payload, options, ct);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
@@ -94,11 +98,11 @@ public sealed class ShortUrlCache : IShortUrlCache
         }
     }
 
-    public async Task RemoveAsync(string shortCode, CancellationToken ct)
+    public async Task RemoveAsync(string routingHost, string shortCode, CancellationToken ct)
     {
         try
         {
-            await _distributedCache.RemoveAsync(GetKey(shortCode), ct);
+            await _distributedCache.RemoveAsync(GetKey(routingHost, shortCode), ct);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
@@ -109,14 +113,15 @@ public sealed class ShortUrlCache : IShortUrlCache
         }
     }
 
-    private static string GetKey(string shortCode)
+    private static string GetKey(string routingHost, string shortCode)
     {
-        return $"{CacheKeyPrefix}{shortCode}";
+        return $"{CacheKeyPrefix}{routingHost}:{shortCode}";
     }
 
-    private static bool IsValid(ShortUrlCacheModel model) =>
+    private static bool IsValid(ShortUrlCacheModel model, string routingHost) =>
         model.SchemaVersion == ShortUrlCacheModel.CurrentSchemaVersion &&
         model.ShortUrlId != Guid.Empty &&
+        model.RoutingHost.Equals(routingHost, StringComparison.Ordinal) &&
         Uri.TryCreate(model.OriginalUrl, UriKind.Absolute, out var uri) &&
         (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
 

@@ -7,10 +7,11 @@ internal static class RedirectCachePolicy
 {
     private static readonly TimeSpan MaximumLifetime = TimeSpan.FromHours(24);
 
-    public static ShortUrlCacheModel CreateModel(ShortUrl entity) =>
+    public static ShortUrlCacheModel CreateModel(ShortUrl entity, string routingHost) =>
         new()
         {
             ShortUrlId = entity.Id,
+            RoutingHost = routingHost,
             OriginalUrl = entity.OriginalUrl,
             ExpiresAtUtc = AsUtc(entity.ExpiresAtUtc)
         };
@@ -19,6 +20,7 @@ internal static class RedirectCachePolicy
         new()
         {
             ShortUrlId = redirect.ShortUrlId,
+            RoutingHost = redirect.RoutingHost,
             OriginalUrl = redirect.OriginalUrl,
             ExpiresAtUtc = AsUtc(redirect.ExpiresAtUtc)
         };

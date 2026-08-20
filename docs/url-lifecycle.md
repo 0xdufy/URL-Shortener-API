@@ -4,18 +4,28 @@ All lifecycle endpoints require a bearer token and resolve the current owner thr
 
 ## Mutable and immutable fields
 
-`PUT /api/v1/short-urls/{shortCode}` is a full replacement of the two mutable fields:
+`PUT /api/v1/short-urls/{shortCode}` is a full replacement of the three mutable fields:
 
 ```json
 {
   "originalUrl": "https://example.com/new-destination",
+  "customDomainId": null,
   "expiresAtUtc": "2026-12-31T00:00:00Z"
 }
 ```
 
-`originalUrl` is required, limited to 2,048 characters, and must be an absolute HTTP or HTTPS URL. `expiresAtUtc` may be omitted or `null` to clear expiry; otherwise it must be a future UTC timestamp ending in `Z`. These are the same destination and expiry rules used at creation. Success returns `200` with the shared `ShortUrlResponse`; invalid input returns `400 VALIDATION_ERROR`.
+`originalUrl` is required, limited to 2,048 characters, and must be an absolute HTTP or HTTPS URL.
+`expiresAtUtc` may be omitted or `null` to clear expiry; otherwise it must be a future UTC timestamp
+ending in `Z`. `customDomainId` is `null`/omitted for the platform host or the ID of a currently
+verified, enabled, owner-accessible domain; an unavailable selection returns
+`409 CUSTOM_DOMAIN_UNAVAILABLE`. Success returns `200` with the shared `ShortUrlResponse`; invalid
+input returns `400 VALIDATION_ERROR`.
 
-Aliases are immutable. The route short code, `id`, `ownerId`, `createdAtUtc`, deletion state, active state, and counters are not update-body fields. Unknown JSON properties cannot transfer ownership or change those system fields. An alias remains globally claimed while its row is soft-deleted, so creation with the same alias returns `409 ALIAS_CONFLICT`.
+Aliases are immutable. Domain assignment is mutable but ownership is not: a composite database
+foreign key prevents a link from referencing another owner's claim. The route short code, `id`,
+`ownerId`, `createdAtUtc`, deletion state, active state, and counters are not update-body fields.
+An alias remains globally claimed while its row is soft-deleted, so creation with the same alias
+returns `409 ALIAS_CONFLICT`.
 
 ## Active state
 
@@ -39,7 +49,10 @@ Restore preserves the pre-delete active state. Consequently, a restored inactive
 
 ## Cache and concurrency semantics
 
-Destination/expiry updates, status changes, soft deletion, and restore remove the code through `IShortUrlCache` after the database save succeeds. This abstraction is process-local today and is the replacement point for the distributed cache in Phase 06. Immediate redirect checks therefore reload current state rather than serving a previously cached destination or eligibility decision.
+Destination/expiry/domain updates, status changes, soft deletion, and restore remove the
+host/code identity through `IShortUrlCache` after the database save succeeds. A domain move
+invalidates both old and new host identities. Domain disable or verification restart invalidates
+every assigned link; persisted route guards remain authoritative if removal fails or races.
 
 No alias mutation or ownership transfer occurs in this lifecycle, so no new uniqueness race is introduced. Mutations load an owner-scoped row and save only changed scalar properties. Competing writes to the same property use database last-commit-wins behavior; writes to different properties can both survive. Delete/update races retain deletion because the update does not write deletion fields. Cache invalidation happens after every successful redirect-affecting commit.
 

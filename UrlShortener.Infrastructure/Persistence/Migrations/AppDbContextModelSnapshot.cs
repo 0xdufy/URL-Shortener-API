@@ -228,6 +228,91 @@ namespace UrlShortener.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("UrlShortener.Domain.Entities.CustomDomain", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("DisabledAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("FailureCode")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("FailureMessage")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTime?>("LastVerificationAttemptAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("NormalizedHost")
+                        .IsRequired()
+                        .HasColumnType("varchar(253)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("VerificationMethod")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("VerificationRequestedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("VerificationToken")
+                        .IsRequired()
+                        .HasColumnType("varchar(43)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<DateTime?>("VerifiedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NormalizedHost")
+                        .IsUnique()
+                        .HasDatabaseName("UX_CustomDomains_NormalizedHost");
+
+                    b.HasIndex("OwnerId", "CreatedAtUtc");
+
+                    b.HasIndex("Status", "UpdatedAtUtc");
+
+                    b.ToTable("CustomDomains", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_CustomDomains_DisabledState", "[Status] <> 4 OR [DisabledAtUtc] IS NOT NULL");
+
+                            t.HasCheckConstraint("CK_CustomDomains_FailureState", "[Status] <> 3 OR ([FailureCode] IS NOT NULL AND [FailureMessage] IS NOT NULL)");
+
+                            t.HasCheckConstraint("CK_CustomDomains_NormalizedHost", "[NormalizedHost] = LOWER([NormalizedHost]) AND RIGHT([NormalizedHost], 1) <> '.' AND CHARINDEX('..', [NormalizedHost]) = 0 AND [NormalizedHost] NOT LIKE '%[^a-z0-9.-]%'");
+
+                            t.HasCheckConstraint("CK_CustomDomains_Status", "[Status] BETWEEN 1 AND 4");
+
+                            t.HasCheckConstraint("CK_CustomDomains_Timestamps", "[UpdatedAtUtc] >= [CreatedAtUtc] AND ([VerificationRequestedAtUtc] IS NULL OR [VerificationRequestedAtUtc] >= [CreatedAtUtc]) AND ([LastVerificationAttemptAtUtc] IS NULL OR [LastVerificationAttemptAtUtc] >= [CreatedAtUtc])");
+
+                            t.HasCheckConstraint("CK_CustomDomains_VerificationMethod", "[VerificationMethod] = 1");
+
+                            t.HasCheckConstraint("CK_CustomDomains_VerifiedState", "[Status] <> 2 OR [VerifiedAtUtc] IS NOT NULL");
+                        });
+                });
+
             modelBuilder.Entity("UrlShortener.Domain.Entities.ShortUrl", b =>
                 {
                     b.Property<Guid>("Id")
@@ -241,6 +326,9 @@ namespace UrlShortener.Infrastructure.Persistence.Migrations
 
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("CustomDomainId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTime?>("DeletedAtUtc")
                         .HasColumnType("datetime2");
@@ -284,6 +372,11 @@ namespace UrlShortener.Infrastructure.Persistence.Migrations
                     b.HasIndex("ShortCode")
                         .IsUnique()
                         .HasDatabaseName("IX_ShortUrls_ShortCode");
+
+                    b.HasIndex("CustomDomainId", "OwnerId");
+
+                    b.HasIndex("CustomDomainId", "ShortCode")
+                        .HasDatabaseName("IX_ShortUrls_CustomDomainId_ShortCode");
 
                     b.HasIndex("OwnerId", "IsDeleted", "CreatedAtUtc", "Id")
                         .HasDatabaseName("IX_ShortUrls_OwnerId_IsDeleted_CreatedAtUtc_Id");
@@ -672,12 +765,29 @@ namespace UrlShortener.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict);
                 });
 
+            modelBuilder.Entity("UrlShortener.Domain.Entities.CustomDomain", b =>
+                {
+                    b.HasOne("UrlShortener.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany("CustomDomains")
+                        .HasForeignKey("OwnerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("UrlShortener.Domain.Entities.ShortUrl", b =>
                 {
                     b.HasOne("UrlShortener.Infrastructure.Identity.ApplicationUser", null)
                         .WithMany("ShortUrls")
                         .HasForeignKey("OwnerId")
                         .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("UrlShortener.Domain.Entities.CustomDomain", "CustomDomain")
+                        .WithMany("ShortUrls")
+                        .HasForeignKey("CustomDomainId", "OwnerId")
+                        .HasPrincipalKey("Id", "OwnerId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("CustomDomain");
                 });
 
             modelBuilder.Entity("UrlShortener.Domain.Entities.ShortUrlAccessLog", b =>
@@ -748,6 +858,11 @@ namespace UrlShortener.Infrastructure.Persistence.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("UrlShortener.Domain.Entities.CustomDomain", b =>
+                {
+                    b.Navigation("ShortUrls");
+                });
+
             modelBuilder.Entity("UrlShortener.Domain.Entities.ShortUrl", b =>
                 {
                     b.Navigation("AccessLogs");
@@ -756,6 +871,8 @@ namespace UrlShortener.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("UrlShortener.Infrastructure.Identity.ApplicationUser", b =>
                 {
                     b.Navigation("ApiKeys");
+
+                    b.Navigation("CustomDomains");
 
                     b.Navigation("RefreshSessions");
 

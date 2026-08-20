@@ -12,13 +12,23 @@ concurrency, size/timeout bounds, and manual verification.
 
 - `originalUrl` is required, may contain at most 2,048 characters, and must be an absolute `http` or `https` URI.
 - `customAlias` may be omitted, `null`, or whitespace-only. A nonblank alias must contain 4–20 ASCII letters, digits, underscores, or hyphens (`^[A-Za-z0-9_-]+$`). Codes are case-sensitive.
+- `customDomainId` may be omitted or `null` for the configured platform host. A value must identify
+  a verified, enabled claim owned by the current user; otherwise creation returns
+  `409 CUSTOM_DOMAIN_UNAVAILABLE`.
 - `expiresAtUtc` may be omitted or `null`. When supplied, it must be a future UTC timestamp serialized with the `Z` designator, for example `2026-12-31T00:00:00Z`. Offset, local, and unspecified timestamps are rejected rather than silently reinterpreted.
 
 The application validates these bounds before persistence. SQL Server independently limits `OriginalUrl` to 2,048 characters and `ShortCode` to 20 characters.
 
 ## Uniqueness and collision handling
 
-The unique SQL Server index `IX_ShortUrls_ShortCode` is the final authority. Creation does not use an existence pre-check. The repository adds and saves one candidate, then reports either `Created` or `ShortCodeConflict`. It classifies only SQL Server duplicate-key errors 2601/2627 that identify this index; unrelated persistence failures remain errors. A failed SQL insert is atomic, its tracked candidate is detached before another attempt, and the cache is populated only after a successful save. The Development-only in-memory repository makes the same create-or-conflict decision inside one lock.
+The unique SQL Server index `IX_ShortUrls_ShortCode` is the final authority. Uniqueness remains
+global across the platform and every custom host; TASK-041 does not permit per-domain code reuse.
+After validating a selected domain, the repository adds and saves one candidate, then reports
+`Created`, `ShortCodeConflict`, or `CustomDomainUnavailable`. It classifies only SQL Server
+duplicate-key errors 2601/2627 that identify this index; unrelated persistence failures remain
+errors. A failed SQL insert is atomic, its tracked candidate is detached before another attempt,
+and the host-aware cache is populated only after a successful save. The Development-only
+in-memory repository makes the same create-or-conflict decision inside one lock.
 
 A custom alias gets one persistence attempt. A conflict is not retried and returns `409 ALIAS_CONFLICT`, regardless of whether the existing code was originally generated or custom. Soft deletion does not release a code.
 

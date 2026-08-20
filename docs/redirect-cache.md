@@ -8,19 +8,21 @@ read and invalidate the same entry. The provider-level namespace from `Redis:Key
 followed by this feature-owned key:
 
 ```text
-redirect:v1:<case-sensitive-short-code>
+redirect:v2:<normalized-routing-host>:<case-sensitive-short-code>
 ```
 
-For example, `myAlias_01` in Development is stored under the physical key
-`url-shortener:development:v1:redirect:v1:myAlias_01`. The feature version changes when an
-incompatible redirect payload or key layout is introduced.
+For example, `myAlias_01` on `sho.rt` in Development is stored under the physical key
+`url-shortener:development:v1:redirect:v2:sho.rt:myAlias_01`. Host identity prevents a persisted
+link from being served on the wrong host even though short codes remain globally unique. Version
+1 keys are intentionally orphaned after this incompatible layout change.
 
 ## Cached Data and Serialization
 
-Values are compact UTF-8 JSON with camel-case property names. Version 1 contains only:
+Values are compact UTF-8 JSON with camel-case property names. Version 2 contains only:
 
 - `schemaVersion`
 - `shortUrlId`
+- `routingHost`
 - `originalUrl`
 - `expiresAtUtc`
 
@@ -37,6 +39,9 @@ entries.
 
 The anonymous `GET /r/{shortCode}` route depends on the dedicated `IRedirectResolver` application
 boundary. It does not resolve a current user, owner, bearer token, or management resource. The
+resolver normalizes the effective `Request.Host.Host`, distinguishes the configured platform host
+from verified custom hosts, and requires the persisted link assignment to match. Unknown hosts,
+unverified/disabled hosts, and wrong host/code combinations are concealed as `404`. The
 resolver returns an explicit status and source instead of leaking HTTP status-code tuples into the
 application layer; the API maps those statuses to the public contract:
 
@@ -48,7 +53,7 @@ application layer; the API maps those statuses to the public contract:
 
 Deletion/inactivity takes precedence over expiry, so a deleted or inactive expired row remains a
 concealed `404`. A single state evaluator classifies both cached and persisted candidates. Because
-version 1 cache values are positive-only and deliberately omit management state, a cache hit is
+version 2 cache values are positive-only and deliberately omit management state, a cache hit is
 still authorized by the persisted active/deleted/expiry guard before its destination is returned.
 An expired cached candidate is evicted and reloaded instead of directly returning `410`, allowing
 a concurrently extended expiry to resolve from authoritative persistence.
@@ -79,16 +84,18 @@ extended link expiry.
 
 ## Invalidation and Race Safety
 
-Destination, expiry, active status, soft deletion, and restore changes invalidate the short-code
-key immediately after the persistence commit. Aliases are immutable in the current management
-contract. Any future alias mutation must invalidate both the old and new short-code keys after its
-uniqueness-safe commit.
+Destination, expiry, active status, soft deletion, and restore changes invalidate the current
+host/code key immediately after the persistence commit. A domain-assignment update invalidates
+both old and new host/code keys. Disabling a domain or restarting verification invalidates all
+assigned link keys after the domain-state commit. Aliases are immutable.
 
 Invalidation alone does not close a cache-aside fill race, and a Redis outage can prevent a remove
 from reaching the server. Before returning a cached destination, a read-only authoritative guard
 requires all of the following persisted state to match:
 
 - the cached short URL ID;
+- the exact normalized routing host and current link/domain assignment;
+- verified custom-domain state when the route is branded;
 - the destination using an exact binary comparison;
 - the exact nullable expiry;
 - active and not deleted state;
@@ -104,7 +111,7 @@ against.
 ## Redirect Validation and Click Publication Boundary
 
 The resolver calls `IShortUrlRepository.IsRedirectCurrentAsync` with the validated short URL ID,
-exact destination/expiry snapshot, and access UTC. This query only verifies authoritative redirect
+route identity, exact destination/expiry snapshot, and access UTC. This query only verifies authoritative redirect
 state; it does not update a counter, timestamp, or access log. Only after that guard succeeds does
 the resolver call the broker-neutral `IRedirectClickEventPublisher`. The publisher reduces client
 metadata to the privacy boundary documented in `click-event-transport.md` and makes one bounded
@@ -140,7 +147,8 @@ Run Redis and SQL Server, apply migrations, then start two API instances with th
 connection string, Redis connection string, and Redis key prefix but different HTTP ports. Use
 instance A to create and warm a link. Use instance B to update the destination, deactivate,
 reactivate, delete, and restore it, checking instance A after every commit. Expected results are
-the new destination, `404`, `302`, `404`, and `302`. The shared `redirect:v1:<short-code>` key must
+the new destination, `404`, `302`, `404`, and `302`. The shared
+`redirect:v2:<routing-host>:<short-code>` key must
 disappear on every mutation and be repopulated only by a later successful redirect.
 
 For outage verification, warm a link, stop Redis, mutate the link, and resolve it while Redis is

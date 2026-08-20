@@ -18,6 +18,7 @@ using UrlShortener.Api.Models;
 using UrlShortener.Api.Security;
 using UrlShortener.Application.Dtos;
 using UrlShortener.Application.ApiKeys;
+using UrlShortener.Application.CustomDomains;
 using UrlShortener.Application.Interfaces;
 using UrlShortener.Application.Services;
 using UrlShortener.Application.Validators;
@@ -53,6 +54,7 @@ public static class ServiceCollectionExtensions
         var idempotencySection = configuration.GetRequiredSection(IdempotencyOptions.SectionName);
         var requestLimitsSection = configuration.GetRequiredSection(RequestLimitsOptions.SectionName);
         var clickEventSection = configuration.GetRequiredSection(ClickEventPrivacyOptions.SectionName);
+        var customDomainSection = configuration.GetRequiredSection(CustomDomainOptions.SectionName);
 
         services.AddRabbitMqTransport(configuration, environment);
 
@@ -215,6 +217,30 @@ public static class ServiceCollectionExtensions
                 "Identity:RefreshTokenAbsoluteLifetimeDays must be between RefreshTokenLifetimeDays and 180.")
             .ValidateOnStart();
 
+        var customDomainOptions = customDomainSection.Get<CustomDomainOptions>()
+            ?? throw new InvalidOperationException($"Configuration section '{CustomDomainOptions.SectionName}' is invalid.");
+        services.AddOptions<CustomDomainOptions>()
+            .Bind(customDomainSection)
+            .Validate(
+                options => IsValidDnsRecordLabel(options.VerificationRecordLabel),
+                "CustomDomains:VerificationRecordLabel must be a single DNS label containing letters, digits, '-' or '_'.")
+            .Validate(
+                options => !string.IsNullOrWhiteSpace(options.VerificationValuePrefix) &&
+                    options.VerificationValuePrefix.Length <= 64 &&
+                    options.VerificationValuePrefix.All(character =>
+                        character is >= '!' and <= '~' && character is not '"' and not '\\'),
+                "CustomDomains:VerificationValuePrefix must contain 1-64 printable ASCII characters without quotes or backslashes.")
+            .Validate(
+                options => IsValidDnsOverHttpsEndpoint(options.DnsOverHttpsEndpoint, environment.IsDevelopment()),
+                "CustomDomains:DnsOverHttpsEndpoint must be an HTTPS URL without query or fragment; Development also permits loopback HTTP.")
+            .Validate(
+                options => options.LookupTimeoutSeconds is >= 1 and <= 30,
+                "CustomDomains:LookupTimeoutSeconds must be between 1 and 30.")
+            .Validate(
+                options => options.ReservedHosts is not null && options.ReservedHosts.All(IsNormalizedCustomDomainHost),
+                "CustomDomains:ReservedHosts must contain normalized DNS hostnames.")
+            .ValidateOnStart();
+
         var shortUrlLifecycleOptions = shortUrlLifecycleSection.Get<ShortUrlLifecycleOptions>()
             ?? throw new InvalidOperationException($"Configuration section '{ShortUrlLifecycleOptions.SectionName}' is invalid.");
         services.AddOptions<ShortUrlLifecycleOptions>()
@@ -230,6 +256,12 @@ public static class ServiceCollectionExtensions
             .Bind(publicUrlSection)
             .Validate(options => IsValidPublicBaseUrl(options.BaseUrl),
                 "PublicUrls:BaseUrl must be an absolute HTTP or HTTPS origin without a path, query, fragment, or trailing slash.")
+            .Validate(
+                options => options.CustomDomainScheme is "http" or "https",
+                "PublicUrls:CustomDomainScheme must be either 'http' or 'https'.")
+            .Validate(
+                options => environment.IsDevelopment() || options.CustomDomainScheme == "https",
+                "PublicUrls:CustomDomainScheme must be 'https' outside Development.")
             .ValidateOnStart();
 
         var identityOptions = identitySection.Get<IdentitySecurityOptions>()
@@ -281,12 +313,14 @@ public static class ServiceCollectionExtensions
             services.AddScoped<IApiKeyRepository, ApiKeyRepository>();
             services.AddScoped<IApiKeyAuthenticationRepository, ApiKeyRepository>();
             services.AddScoped<IApiKeyService, ApiKeyService>();
+            services.AddScoped<ICustomDomainRepository, CustomDomainRepository>();
         }
         else
         {
             services.AddSingleton<IAuthenticationService, UnavailableAuthenticationService>();
             services.AddSingleton<IApiKeyAuthenticationRepository, UnavailableApiKeyAuthenticationRepository>();
             services.AddSingleton<IApiKeyService, UnavailableApiKeyService>();
+            services.AddSingleton<ICustomDomainRepository, InMemoryCustomDomainRepository>();
         }
 
         var signingKey = ResolveSigningKey(storageOptions, identityOptions);
@@ -438,11 +472,16 @@ public static class ServiceCollectionExtensions
         services.AddValidatorsFromAssemblyContaining<CreateShortUrlRequestValidator>();
 
         services.AddScoped<IShortUrlService, ShortUrlService>();
+        services.AddScoped<ICustomDomainService, CustomDomainService>();
         services.AddScoped<IAnalyticsQueryService, AnalyticsQueryService>();
         services.AddScoped<IRedirectResolver, RedirectResolver>();
         services.AddSingleton<IRedirectClickEventPublisher, PrivacyAwareRedirectClickEventPublisher>();
         services.AddSingleton(new ShortUrlLifecycleSettings(shortUrlLifecycleOptions.SoftDeleteRetentionDays));
-        services.AddSingleton(new ShortUrlContractSettings(publicUrlOptions.BaseUrl));
+        var publicBaseUri = new Uri(publicUrlOptions.BaseUrl, UriKind.Absolute);
+        services.AddSingleton(new ShortUrlContractSettings(
+            publicUrlOptions.BaseUrl,
+            publicBaseUri.DnsSafeHost.ToLowerInvariant(),
+            publicUrlOptions.CustomDomainScheme));
         services.AddSingleton(new IdempotencySettings(idempotencyOptions.RetentionHours));
         services.AddScoped<ICurrentUserContext, HttpCurrentUserContext>();
         if (storageOptions.UseInMemory)
@@ -458,7 +497,17 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IDistributedRateLimiter, RedisDistributedRateLimiter>();
         services.AddSingleton<IDateTimeProvider, DateTimeProvider>();
         services.AddSingleton<IApiKeyCredentialGenerator, ApiKeyCredentialGenerator>();
+        services.AddSingleton<IVerificationTokenGenerator, VerificationTokenGenerator>();
         services.AddSingleton(new ApiKeyManagementSettings());
+        services.AddSingleton(new CustomDomainPolicySettings(
+            customDomainOptions.VerificationRecordLabel,
+            customDomainOptions.VerificationValuePrefix,
+            BuildReservedCustomDomainHosts(customDomainOptions, publicUrlOptions)));
+        services.AddHttpClient<ICustomDomainOwnershipVerifier, DnsOverHttpsCustomDomainOwnershipVerifier>(client =>
+        {
+            client.MaxResponseContentBufferSize = 64 * 1024;
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("UrlShortener-DomainVerifier/1.0");
+        });
 
         return services;
     }
@@ -612,6 +661,42 @@ public static class ServiceCollectionExtensions
 
     private static bool IsValidPublicBaseUrl(string value) =>
         IsValidOrigin(value);
+
+    private static bool IsValidDnsRecordLabel(string value) =>
+        !string.IsNullOrWhiteSpace(value) && value.Length <= 63 &&
+        value[0] != '-' && value[^1] != '-' &&
+        value.All(character => char.IsAsciiLetterOrDigit(character) || character is '-' or '_');
+
+    private static bool IsValidDnsOverHttpsEndpoint(string value, bool allowDevelopmentLoopbackHttp)
+    {
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) ||
+            !string.IsNullOrEmpty(uri.Query) || !string.IsNullOrEmpty(uri.Fragment) ||
+            uri.AbsolutePath == "/")
+        {
+            return false;
+        }
+
+        return uri.Scheme == Uri.UriSchemeHttps ||
+            (allowDevelopmentLoopbackHttp && uri.Scheme == Uri.UriSchemeHttp && uri.IsLoopback);
+    }
+
+    private static bool IsNormalizedCustomDomainHost(string value) =>
+        CustomDomainHostNormalizer.TryNormalize(value, out var normalized, out _) &&
+        normalized.Equals(value, StringComparison.Ordinal);
+
+    private static IReadOnlySet<string> BuildReservedCustomDomainHosts(
+        CustomDomainOptions options,
+        PublicUrlOptions publicUrlOptions)
+    {
+        var hosts = new HashSet<string>(options.ReservedHosts, StringComparer.Ordinal);
+        var publicHost = new Uri(publicUrlOptions.BaseUrl).DnsSafeHost;
+        if (CustomDomainHostNormalizer.TryNormalize(publicHost, out var normalizedPublicHost, out _))
+        {
+            hosts.Add(normalizedPublicHost);
+        }
+
+        return hosts;
+    }
 
     private static async Task WriteAuthenticationErrorAsync(
         HttpContext context,
