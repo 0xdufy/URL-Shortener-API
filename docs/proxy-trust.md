@@ -12,9 +12,10 @@ The API has two supported client-IP topologies:
    `KnownProxies` or `KnownNetworks`, and `ForwardLimit` is no greater than the intended proxy-chain
    depth.
 
-Forwarded-header processing runs before request logging, authentication, rate limiting, and
-controllers. This task enables only `X-Forwarded-For`; `X-Forwarded-Host` and
-`X-Forwarded-Proto` do not influence the request. Canonical public short URLs continue to come
+Forwarded-header processing runs before HTTPS redirection, request logging, authentication, rate
+limiting, and controllers. A trusted topology enables `X-Forwarded-For` and
+`X-Forwarded-Proto`; the latter prevents an HTTPS-terminating proxy from causing a redirect loop.
+`X-Forwarded-Host` does not influence the request. Canonical public short URLs continue to come
 from `PublicUrls:BaseUrl` rather than any request header.
 
 TASK-041 custom-domain redirects use the actual `Host` field received by Kestrel, not
@@ -78,8 +79,9 @@ Before adding or replacing a proxy/load balancer:
 
 1. Determine the source IP or smallest dedicated CIDR seen by Kestrel for every hop.
 2. Configure each hop as a known proxy/network and set `ForwardLimit` to the intended chain depth.
-3. Configure the public edge to sanitize client-supplied `X-Forwarded-For` and pass one consistent
-   header through the internal chain.
+3. Configure the public edge to sanitize client-supplied `X-Forwarded-For` and
+   `X-Forwarded-Proto`, then pass the verified client address and public scheme consistently
+   through the internal chain.
 4. Restart the API so startup validation applies the complete configuration atomically.
 5. Repeat direct, trusted-proxy, and untrusted-header checks. Confirm rate-limit partitions and
    analytics records see the same effective client identity.

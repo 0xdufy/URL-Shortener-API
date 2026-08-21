@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.HttpsPolicy;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
@@ -93,7 +94,7 @@ public static class ServiceCollectionExtensions
         services.Configure<ForwardedHeadersOptions>(options =>
         {
             options.ForwardedHeaders = proxyTrustOptions.Enabled
-                ? ForwardedHeaders.XForwardedFor
+                ? ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
                 : ForwardedHeaders.None;
             options.ForwardLimit = proxyTrustOptions.ForwardLimit;
             options.KnownProxies.Clear();
@@ -197,8 +198,14 @@ public static class ServiceCollectionExtensions
             .Validate(options => !string.IsNullOrWhiteSpace(options.JwtAudience), "Identity:JwtAudience is required.")
             .Validate(options => options.JwtClockSkewSeconds is >= 0 and <= 120, "Identity:JwtClockSkewSeconds must be between 0 and 120.")
             .Validate(
-                options => options.AllowedOrigins.Length > 0 && options.AllowedOrigins.All(IsValidOrigin),
+                options => options.AllowedOrigins is { Length: > 0 } &&
+                    options.AllowedOrigins.All(IsValidOrigin) &&
+                    options.AllowedOrigins.Distinct(StringComparer.OrdinalIgnoreCase).Count() == options.AllowedOrigins.Length,
                 "Identity:AllowedOrigins must contain explicit absolute HTTP or HTTPS origins without paths.")
+            .Validate(
+                options => environment.IsDevelopment() ||
+                    options.AllowedOrigins.All(origin => new Uri(origin).Scheme == Uri.UriSchemeHttps),
+                "Identity:AllowedOrigins must contain only HTTPS origins outside Development.")
             .Validate(
                 options => environment.IsDevelopment() || options.RequireSecureCookies,
                 "Identity:RequireSecureCookies must be true outside Development.")
@@ -254,8 +261,8 @@ public static class ServiceCollectionExtensions
             ?? throw new InvalidOperationException($"Configuration section '{PublicUrlOptions.SectionName}' is invalid.");
         services.AddOptions<PublicUrlOptions>()
             .Bind(publicUrlSection)
-            .Validate(options => IsValidPublicBaseUrl(options.BaseUrl),
-                "PublicUrls:BaseUrl must be an absolute HTTP or HTTPS origin without a path, query, fragment, or trailing slash.")
+            .Validate(options => IsValidPublicBaseUrl(options.BaseUrl, environment.IsDevelopment()),
+                "PublicUrls:BaseUrl must be an absolute HTTPS origin without a path, query, fragment, or trailing slash; Development also permits HTTP.")
             .Validate(
                 options => options.CustomDomainScheme is "http" or "https",
                 "PublicUrls:CustomDomainScheme must be either 'http' or 'https'.")
@@ -440,10 +447,28 @@ public static class ServiceCollectionExtensions
             {
                 policy
                     .WithOrigins(identityOptions.AllowedOrigins)
-                    .AllowAnyHeader()
-                    .AllowAnyMethod()
+                    .WithMethods("GET", "POST", "PUT", "PATCH", "DELETE")
+                    .WithHeaders(
+                        "Authorization",
+                        "Content-Type",
+                        "Idempotency-Key",
+                        "X-Client-Request-ID",
+                        "X-XSRF-TOKEN")
+                    .WithExposedHeaders("Retry-After")
                     .AllowCredentials();
             });
+        });
+
+        services.AddHsts(options =>
+        {
+            options.MaxAge = TimeSpan.FromDays(180);
+            options.IncludeSubDomains = false;
+            options.Preload = false;
+        });
+        services.Configure<HttpsRedirectionOptions>(options =>
+        {
+            options.RedirectStatusCode = StatusCodes.Status308PermanentRedirect;
+            options.HttpsPort = 443;
         });
 
         services.AddMemoryCache();
@@ -660,8 +685,9 @@ public static class ServiceCollectionExtensions
         uri.AbsolutePath == "/" &&
         !value.EndsWith("/", StringComparison.Ordinal);
 
-    private static bool IsValidPublicBaseUrl(string value) =>
-        IsValidOrigin(value);
+    private static bool IsValidPublicBaseUrl(string value, bool allowDevelopmentHttp) =>
+        IsValidOrigin(value) &&
+        (new Uri(value).Scheme == Uri.UriSchemeHttps || allowDevelopmentHttp);
 
     private static bool IsValidDnsRecordLabel(string value) =>
         !string.IsNullOrWhiteSpace(value) && value.Length <= 63 &&
@@ -730,6 +756,7 @@ public static class ServiceCollectionExtensions
         {
             loggerConfiguration
                 .MinimumLevel.Is(minimumLevel)
+                .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
                 .WriteTo.Console()
                 .WriteTo.File("logs/url-shortener-.log", rollingInterval: RollingInterval.Day);
         });

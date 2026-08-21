@@ -96,8 +96,9 @@ cd UrlShortener.Api
 dotnet run
 ```
 
-### 5) Swagger
-After startup, open:
+### 5) Swagger (Development only)
+After Development startup, open:
+
 - `https://localhost:7221/swagger`
 - `http://localhost:5034/swagger`
 
@@ -125,7 +126,7 @@ Open `http://localhost:4200`. Development API requests use the centralized
 
 ## Public Short URL Base
 
-`PublicUrls:BaseUrl` is the canonical externally reachable origin used for every returned `shortUrl`. Development defaults to `https://localhost:7221`; deployed environments must supply their public origin, normally through `PublicUrls__BaseUrl`. The API does not construct public URLs from the request host or an internal reverse-proxy/container host. See [Management API Contract](docs/management-api.md) for the proxy routing model.
+`PublicUrls:BaseUrl` is the canonical externally reachable origin used for every returned `shortUrl`. Development defaults to `https://localhost:7221`; deployed environments must supply their HTTPS public origin, normally through `PublicUrls__BaseUrl`. The API does not construct public URLs from the request host or an internal reverse-proxy/container host. See [Management API Contract](docs/management-api.md) for the proxy routing model and [HTTP, Authentication, and Session Security](docs/http-auth-security.md) for the deployed transport policy.
 
 ## Endpoints
 

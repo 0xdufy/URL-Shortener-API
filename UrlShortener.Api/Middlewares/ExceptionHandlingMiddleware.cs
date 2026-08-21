@@ -215,8 +215,8 @@ public class ExceptionHandlingMiddleware
         if (code == "UNEXPECTED_ERROR")
         {
             _logger.LogError(
-                exception,
-                "Unhandled exception while processing request {TraceId}.",
+                "Unhandled exception of type {ExceptionType} while processing request {TraceId}. Exception details were suppressed to protect request secrets.",
+                exception.GetType().FullName,
                 context.TraceIdentifier);
         }
 

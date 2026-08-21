@@ -17,6 +17,7 @@ var requestLimits = builder.Configuration
     ?? throw new InvalidOperationException($"Configuration section '{RequestLimitsOptions.SectionName}' is invalid.");
 builder.WebHost.ConfigureKestrel(options =>
 {
+    options.AddServerHeader = false;
     options.Limits.MaxRequestBodySize = requestLimits.MaxRequestBodyBytes;
     options.Limits.MaxRequestLineSize = requestLimits.MaxRequestLineBytes;
     options.Limits.MaxRequestHeadersTotalSize = requestLimits.MaxRequestHeadersTotalBytes;
@@ -92,6 +93,14 @@ else
 }
 
 app.UseForwardedHeaders();
+app.UseMiddleware<SecurityHeadersMiddleware>();
+
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHsts();
+    app.UseHttpsRedirection();
+}
+
 app.UseSerilogRequestLogging();
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseRequestTimeouts();
@@ -118,8 +127,11 @@ app.UseCors("TrustedWebClient");
 app.UseAuthentication();
 app.UseMiddleware<DistributedRateLimitingMiddleware>();
 app.UseAuthorization();
-app.UseSwagger();
-app.UseSwaggerUI();
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
 app.MapControllers();
 
 app.Run();

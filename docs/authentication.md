@@ -30,7 +30,7 @@ Safe, non-secret settings live under `Identity`:
 | `JwtIssuer` | `UrlShortener.Api` | Required JWT issuer. |
 | `JwtAudience` | `UrlShortener.Client` | Required JWT audience. |
 | `JwtClockSkewSeconds` | `30` | Allowed validation skew, bounded to 0–120 seconds. |
-| `AllowedOrigins` | local Angular origins | Exact origins accepted for credentialed CORS and refresh/sign-out CSRF checks. |
+| `AllowedOrigins` | local Angular origins | Exact origins accepted for credentialed CORS and refresh/sign-out CSRF checks; deployed origins must use HTTPS. |
 | `AccessTokenLifetimeMinutes` | `10` | JWT lifetime, bounded to 5–30 minutes. |
 | `RefreshTokenLifetimeDays` | `30` | Rolling refresh-session lifetime. |
 | `RefreshTokenAbsoluteLifetimeDays` | `90` | Maximum refresh-family lifetime. |
@@ -45,6 +45,8 @@ semantics, and outage behavior are documented in [Distributed Rate Limiting](rat
 - Registration, sign-in, and refresh return an access token in JSON. The future Angular client keeps it in memory and sends `Authorization: Bearer <token>`.
 - The raw refresh token is never returned in JSON. It is delivered as the `urlshortener.refresh` cookie with `HttpOnly`, `SameSite=Strict`, a path of `/api/v1/auth`, and `Secure` outside an explicit Development-only HTTP run.
 - The response contains `csrfToken`. Send it as `X-XSRF-TOKEN` together with the antiforgery cookie and an exact configured `Origin` header for refresh and sign-out.
+- Authentication responses, including errors, use `Cache-Control: no-store`; credentialed CORS is
+  restricted to the methods and headers listed in [HTTP, Authentication, and Session Security](http-auth-security.md).
 - A successful refresh rotates the refresh token. Reuse of a rotated/revoked token revokes its active replacement family.
 - Sign-out revokes the refresh family and deletes the browser cookie. A previously issued access token remains valid only until its documented short expiry, as defined by ADR 0003.
 - Passwords, password hashes, security stamps, token hashes, raw refresh tokens, cookies, and signing keys are never included in logs or error bodies.

@@ -15,7 +15,9 @@ Set `PublicUrls:BaseUrl` to the externally reachable HTTPS origin, for example:
 }
 ```
 
-The value is required at startup and must be an absolute HTTP or HTTPS origin without a path, query, fragment, or trailing slash. Environment variable form: `PublicUrls__BaseUrl=https://sho.rt`.
+The value is required at startup and must be an absolute HTTPS origin without a path, query,
+fragment, or trailing slash outside Development. Development may use HTTP for local-only runs.
+Environment variable form: `PublicUrls__BaseUrl=https://sho.rt`.
 
 Every link representation includes a canonical `shortUrl` such as `https://sho.rt/r/A1b2C3d4`.
 A branded link uses the selected verified persisted hostname and configured custom-domain scheme.
@@ -150,4 +152,5 @@ Every API error, including malformed JSON, unsupported media types, unknown API 
 
 An absent, invalid, or expired token returns `401 AUTHENTICATION_REQUIRED`. An authenticated request for a missing, deleted, unowned, or differently owned code returns the same `404 NOT_FOUND` response to conceal resource existence. `403 FORBIDDEN` is reserved for a non-resource role or scope policy. Angular should branch on `error.code`, retain `traceId` for support, and bind validation details by the camel-case `field` value.
 
-Swagger at `/swagger` is the authoritative schema listing and marks every management operation with Bearer authentication.
+Development Swagger at `/swagger` is the authoritative generated schema listing and marks every
+management operation with Bearer authentication. It is not exposed outside Development.
