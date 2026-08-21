@@ -113,7 +113,10 @@ export const APPLICATION_ROUTES: Routes = [
           title: 'Domains',
           description: 'Connect and verify branded domains for shortened URLs.',
         },
-        loadComponent: loadPlaceholder,
+        loadComponent: () =>
+          import('./custom-domains-page.component').then(
+            ({ CustomDomainsPageComponent }) => CustomDomainsPageComponent,
+          ),
       },
       {
         path: 'account',

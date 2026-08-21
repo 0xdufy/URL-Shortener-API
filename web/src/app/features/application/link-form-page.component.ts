@@ -3,6 +3,7 @@ import {
   Component,
   ElementRef,
   OnInit,
+  computed,
   inject,
   signal,
 } from '@angular/core';
@@ -18,7 +19,8 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { finalize } from 'rxjs';
 
 import { ApiError } from '../../core/api/api-error';
-import { ShortUrlResource } from '../../core/api/api.models';
+import { CustomDomainResource, ShortUrlResource } from '../../core/api/api.models';
+import { CustomDomainsApiClient } from '../../core/api/custom-domains-api-client.service';
 import { ShortUrlsApiClient } from '../../core/api/short-urls-api-client.service';
 import { ButtonComponent } from '../../shared/ui/button/button.component';
 import { FieldComponent } from '../../shared/ui/field/field.component';
@@ -29,7 +31,9 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
 
 type LinkFormMode = 'create' | 'edit';
 type AliasMode = 'generated' | 'custom';
-type LinkField = 'originalUrl' | 'customAlias' | 'expiresAtUtc';
+type LinkField = 'originalUrl' | 'customAlias' | 'customDomainId' | 'expiresAtUtc';
+
+const UNAVAILABLE_DOMAIN = '__unavailable__';
 
 interface FormAlert {
   readonly title: string;
@@ -247,6 +251,50 @@ interface LoadError {
               }
 
               <app-field
+                controlId="custom-domain"
+                label="Link domain"
+                hint="Use Shortly's platform domain or one of your verified custom domains."
+                [error]="fieldError('customDomainId')"
+              >
+                <select
+                  id="custom-domain"
+                  class="form-control"
+                  formControlName="customDomainId"
+                  [attr.aria-describedby]="fieldDescription('customDomainId', 'custom-domain')"
+                  [attr.aria-invalid]="fieldError('customDomainId') ? true : null"
+                  [attr.aria-busy]="domainsLoading() || null"
+                >
+                  <option value="">Shortly platform domain</option>
+                  @if (form.controls.customDomainId.value === unavailableDomainValue) {
+                    <option [value]="unavailableDomainValue" disabled>
+                      {{ unavailableDomainHost() ?? 'Selected custom domain' }} — unavailable
+                    </option>
+                  }
+                  @for (domain of verifiedDomains(); track domain.id) {
+                    <option [value]="domain.id">{{ domain.host }}</option>
+                  }
+                </select>
+                @if (domainsLoading()) {
+                  <p class="domain-selector-note" role="status">Loading verified domains…</p>
+                } @else if (domainsLoadError()) {
+                  <p class="domain-selector-note error" role="alert">
+                    Verified domains could not load.
+                    <button type="button" (click)="loadDomains()">Try again</button>
+                  </p>
+                } @else if (verifiedDomains().length === 0) {
+                  <p class="domain-selector-note">
+                    No verified custom domains are available.
+                    <a routerLink="/app/domains">Manage domains</a>
+                  </p>
+                } @else {
+                  <p class="domain-selector-note">
+                    Only backend-verified, enabled domains appear here.
+                    <a routerLink="/app/domains">Manage domains</a>
+                  </p>
+                }
+              </app-field>
+
+              <app-field
                 controlId="expires-at"
                 label="Expiry date and time"
                 hint="Entered in your local time and sent to the API as UTC. Leave blank for no expiry."
@@ -334,6 +382,7 @@ interface LoadError {
 })
 export class LinkFormPageComponent implements OnInit {
   private readonly api = inject(ShortUrlsApiClient);
+  private readonly domainsApi = inject(CustomDomainsApiClient);
   private readonly elementRef = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly formBuilder = inject(FormBuilder);
   private readonly route = inject(ActivatedRoute);
@@ -349,6 +398,16 @@ export class LinkFormPageComponent implements OnInit {
   protected readonly loadError = signal<LoadError | null>(null);
   protected readonly formAlert = signal<FormAlert | null>(null);
   protected readonly saveConfirmation = signal(false);
+  protected readonly customDomains = signal<readonly CustomDomainResource[]>([]);
+  protected readonly domainsLoading = signal(true);
+  protected readonly domainsLoadError = signal(false);
+  protected readonly unavailableDomainValue = UNAVAILABLE_DOMAIN;
+  protected readonly unavailableDomainHost = signal<string | null>(null);
+  protected readonly verifiedDomains = computed(() =>
+    this.customDomains().filter(
+      (domain) => domain.status === 'verified' && domain.canServeBrandedLinks,
+    ),
+  );
   protected readonly serverFieldErrors = signal<Readonly<Partial<Record<LinkField, string>>>>({});
   protected readonly form = this.formBuilder.nonNullable.group({
     originalUrl: ['', [Validators.required, Validators.maxLength(2048), absoluteHttpUrl]],
@@ -357,6 +416,7 @@ export class LinkFormPageComponent implements OnInit {
       '',
       [Validators.minLength(4), Validators.maxLength(20), Validators.pattern(/^[A-Za-z0-9_-]+$/)],
     ],
+    customDomainId: ['', [availableDomainSelection]],
     expiresAtLocal: ['', [futureLocalDateTime]],
   });
 
@@ -367,6 +427,19 @@ export class LinkFormPageComponent implements OnInit {
     this.form.controls.customAlias.valueChanges
       .pipe(takeUntilDestroyed())
       .subscribe(() => this.clearServerError('customAlias'));
+    this.form.controls.customDomainId.valueChanges.pipe(takeUntilDestroyed()).subscribe((value) => {
+      if (!value) {
+        this.unavailableDomainHost.set(null);
+      } else if (value !== UNAVAILABLE_DOMAIN) {
+        this.unavailableDomainHost.set(
+          this.customDomains().find((domain) => domain.id === value)?.host ??
+            (this.link()?.customDomainId === value
+              ? (this.link()?.customDomainHost ?? null)
+              : null),
+        );
+      }
+      this.clearServerError('customDomainId');
+    });
     this.form.controls.expiresAtLocal.valueChanges
       .pipe(takeUntilDestroyed())
       .subscribe(() => this.clearServerError('expiresAtUtc'));
@@ -383,6 +456,7 @@ export class LinkFormPageComponent implements OnInit {
   }
 
   ngOnInit(): void {
+    this.loadDomains();
     if (this.mode === 'edit') {
       this.loadLink();
     }
@@ -409,10 +483,12 @@ export class LinkFormPageComponent implements OnInit {
         ? this.api.create({
             originalUrl: value.originalUrl.trim(),
             customAlias: value.aliasMode === 'custom' ? value.customAlias.trim() : null,
+            customDomainId: value.customDomainId || null,
             expiresAtUtc,
           })
         : this.api.update(this.route.snapshot.paramMap.get('shortCode') ?? '', {
             originalUrl: value.originalUrl.trim(),
+            customDomainId: value.customDomainId || null,
             expiresAtUtc,
           });
 
@@ -436,6 +512,9 @@ export class LinkFormPageComponent implements OnInit {
 
     if (control.hasError('required')) {
       return field === 'customAlias' ? 'Enter a custom alias.' : 'Enter the destination URL.';
+    }
+    if (control.hasError('domainUnavailable')) {
+      return 'Choose the platform domain or a currently verified custom domain.';
     }
     if (control.hasError('httpUrl')) {
       return 'Enter a complete URL beginning with http:// or https://.';
@@ -486,6 +565,7 @@ export class LinkFormPageComponent implements OnInit {
       originalUrl: '',
       aliasMode: 'generated',
       customAlias: '',
+      customDomainId: '',
       expiresAtLocal: '',
     });
     this.form.markAsPristine();
@@ -533,12 +613,14 @@ export class LinkFormPageComponent implements OnInit {
           this.link.set(resource);
           this.form.patchValue({
             originalUrl: resource.originalUrl,
+            customDomainId: resource.customDomainId ?? '',
             expiresAtLocal: resource.expiresAtUtc
               ? toLocalDateTimeInput(new Date(resource.expiresAtUtc))
               : '',
           });
           this.form.markAsPristine();
           this.form.markAsUntouched();
+          this.reconcileDomainSelection();
         },
         error: (error: unknown) => this.loadError.set(this.describeLoadError(error)),
       });
@@ -554,10 +636,12 @@ export class LinkFormPageComponent implements OnInit {
     this.link.set(savedLink);
     this.form.patchValue({
       originalUrl: savedLink.originalUrl,
+      customDomainId: savedLink.customDomainId ?? '',
       expiresAtLocal: savedLink.expiresAtUtc
         ? toLocalDateTimeInput(new Date(savedLink.expiresAtUtc))
         : '',
     });
+    this.reconcileDomainSelection();
     this.form.markAsPristine();
     this.form.markAsUntouched();
     this.saveConfirmation.set(true);
@@ -593,6 +677,15 @@ export class LinkFormPageComponent implements OnInit {
         title: 'That alias is already taken',
         message: 'Choose a different custom alias, or let Shortly generate a unique code.',
       });
+    } else if (error.code === 'CUSTOM_DOMAIN_UNAVAILABLE') {
+      fieldErrors.customDomainId =
+        'This domain is no longer verified and enabled. Choose another domain.';
+      this.formAlert.set({
+        title: 'Custom domain unavailable',
+        message:
+          'Domain status changed before the link was saved. Refresh the available domains and choose again.',
+      });
+      this.loadDomains();
     } else if (error.kind === 'rate-limited' || error.code === 'RATE_LIMITED') {
       this.formAlert.set({
         title: 'Creation limit reached',
@@ -636,6 +729,41 @@ export class LinkFormPageComponent implements OnInit {
       this.focusFirstServerError(fieldErrors);
     } else {
       this.focusAlert();
+    }
+  }
+
+  protected loadDomains(): void {
+    this.domainsLoading.set(true);
+    this.domainsLoadError.set(false);
+    this.domainsApi
+      .list()
+      .pipe(
+        finalize(() => {
+          this.domainsLoading.set(false);
+          this.reconcileDomainSelection();
+        }),
+      )
+      .subscribe({
+        next: (domains) => {
+          this.customDomains.set(domains);
+          this.reconcileDomainSelection();
+        },
+        error: () => {
+          this.domainsLoadError.set(true);
+          this.reconcileDomainSelection();
+        },
+      });
+  }
+
+  private reconcileDomainSelection(): void {
+    const selectedId = this.form.controls.customDomainId.value;
+    if (!selectedId || selectedId === UNAVAILABLE_DOMAIN || this.domainsLoading()) {
+      return;
+    }
+    const available = this.verifiedDomains().some((domain) => domain.id === selectedId);
+    if (!available) {
+      this.form.controls.customDomainId.setValue(UNAVAILABLE_DOMAIN);
+      this.form.controls.customDomainId.markAsTouched();
     }
   }
 
@@ -701,7 +829,9 @@ export class LinkFormPageComponent implements OnInit {
       ? '#original-url'
       : errors.customAlias
         ? '#custom-alias'
-        : '#expires-at';
+        : errors.customDomainId
+          ? '#custom-domain'
+          : '#expires-at';
     this.focusElement(selector);
   }
 
@@ -742,6 +872,10 @@ function futureLocalDateTime(control: AbstractControl<string>): ValidationErrors
   return timestamp > Date.now() ? null : { futureDateTime: true };
 }
 
+function availableDomainSelection(control: AbstractControl<string>): ValidationErrors | null {
+  return control.value === UNAVAILABLE_DOMAIN ? { domainUnavailable: true } : null;
+}
+
 function localDateTimeToUtc(value: string): string | null {
   return value ? new Date(value).toISOString() : null;
 }
@@ -760,6 +894,9 @@ function normalizeApiField(field: string): LinkField | undefined {
   }
   if (normalized.endsWith('customalias')) {
     return 'customAlias';
+  }
+  if (normalized.endsWith('customdomainid')) {
+    return 'customDomainId';
   }
   if (normalized.endsWith('expiresatutc')) {
     return 'expiresAtUtc';

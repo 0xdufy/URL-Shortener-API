@@ -50,6 +50,8 @@ export interface ShortUrlResource {
   readonly originalUrl: string;
   readonly shortCode: string;
   readonly shortUrl: string;
+  readonly customDomainId: string | null;
+  readonly customDomainHost: string | null;
   readonly createdAtUtc: string;
   readonly expiresAtUtc: string | null;
   readonly isActive: boolean;
@@ -66,6 +68,8 @@ export interface ShortUrlListItem {
   readonly originalUrl: string;
   readonly shortCode: string;
   readonly shortUrl: string;
+  readonly customDomainId: string | null;
+  readonly customDomainHost: string | null;
   readonly createdAtUtc: string;
   readonly expiresAtUtc: string | null;
   readonly isActive: boolean;
@@ -118,11 +122,13 @@ export interface ShortUrlListResponse {
 export interface CreateShortUrlRequest {
   readonly originalUrl: string;
   readonly customAlias?: string | null;
+  readonly customDomainId?: string | null;
   readonly expiresAtUtc?: string | null;
 }
 
 export interface UpdateShortUrlRequest {
   readonly originalUrl: string;
+  readonly customDomainId: string | null;
   readonly expiresAtUtc: string | null;
 }
 
@@ -243,4 +249,41 @@ export interface CreateApiKeyRequest {
 export interface ApiKeyCreationResponse {
   readonly apiKey: ApiKeyResource;
   readonly key: string;
+}
+
+export type CustomDomainStatus = 'pending' | 'failed' | 'verified' | 'disabled';
+
+export interface CustomDomainVerificationRecord {
+  readonly type: 'TXT' | string;
+  readonly name: string;
+  readonly value: string;
+}
+
+export interface CustomDomainVerificationFailure {
+  readonly code:
+    | 'DNS_TXT_RECORD_NOT_FOUND'
+    | 'DNS_TXT_RECORD_MISMATCH'
+    | 'DNS_LOOKUP_UNAVAILABLE'
+    | string;
+  readonly message: string;
+}
+
+export interface CustomDomainResource {
+  readonly id: string;
+  readonly host: string;
+  readonly status: CustomDomainStatus;
+  readonly verificationMethod: 'dns_txt' | string;
+  readonly verificationRecord: CustomDomainVerificationRecord;
+  readonly canServeBrandedLinks: boolean;
+  readonly createdAtUtc: string;
+  readonly updatedAtUtc: string;
+  readonly verificationRequestedAtUtc: string | null;
+  readonly lastVerificationAttemptAtUtc: string | null;
+  readonly verifiedAtUtc: string | null;
+  readonly disabledAtUtc: string | null;
+  readonly verificationFailure: CustomDomainVerificationFailure | null;
+}
+
+export interface RegisterCustomDomainRequest {
+  readonly host: string;
 }

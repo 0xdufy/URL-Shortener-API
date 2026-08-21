@@ -57,7 +57,8 @@ multiple origins.
 
 ## Typed API, authentication state, and errors
 
-Application code calls `AuthenticationApiClient` and `ShortUrlsApiClient` from `src/app/core/api/`.
+Application code calls `AuthenticationApiClient`, `ShortUrlsApiClient`, and feature-specific typed
+clients such as `CustomDomainsApiClient` from `src/app/core/api/`.
 Feature components must not construct API paths, attach authentication headers, enable cookie
 credentials, or duplicate transport DTOs. Contract timestamps remain ISO-8601 strings at the HTTP
 boundary so feature code can choose when and how to create `Date` values without hiding timezone

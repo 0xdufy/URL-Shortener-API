@@ -166,6 +166,27 @@ a {
   color: #7c879b;
 }
 
+.domain-selector-note {
+  margin: var(--space-1) 0 0;
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+}
+
+.domain-selector-note.error {
+  color: var(--color-danger);
+}
+
+.domain-selector-note a,
+.domain-selector-note button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-primary);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 750;
+}
+
 app-application-shell .signed-in-user {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
