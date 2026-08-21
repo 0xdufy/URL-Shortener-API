@@ -472,6 +472,7 @@ public static class ServiceCollectionExtensions
         services.AddValidatorsFromAssemblyContaining<CreateShortUrlRequestValidator>();
 
         services.AddScoped<IShortUrlService, ShortUrlService>();
+        services.AddSingleton<IQrCodeGenerator, QrCodeGeneratorService>();
         services.AddScoped<ICustomDomainService, CustomDomainService>();
         services.AddScoped<IAnalyticsQueryService, AnalyticsQueryService>();
         services.AddScoped<IRedirectResolver, RedirectResolver>();

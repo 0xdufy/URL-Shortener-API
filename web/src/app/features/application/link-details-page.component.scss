@@ -38,6 +38,7 @@
 .state-card,
 .link-hero,
 .destination-card,
+.qr-card,
 .metadata-card,
 .lifecycle-card,
 .analytics-card {
@@ -211,6 +212,45 @@ h2 {
   font-size: 0.92rem;
   text-decoration-color: var(--color-border-strong);
   text-underline-offset: 0.2rem;
+}
+
+.qr-workspace {
+  display: grid;
+  margin-top: var(--space-5);
+  place-items: center;
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-subtle);
+}
+
+.qr-preview {
+  display: block;
+  width: min(100%, 20rem);
+  height: auto;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sm);
+}
+
+.qr-workspace app-state-panel {
+  width: 100%;
+  border: 0;
+}
+
+.qr-caption {
+  margin-top: var(--space-4);
+  color: var(--color-text-muted);
+  font-size: 0.82rem;
+}
+
+.qr-caption p {
+  margin: 0 0 var(--space-1);
+}
+
+.qr-caption a,
+.qr-caption span {
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 .metric-grid {
@@ -458,6 +498,7 @@ h2 {
   .state-card,
   .link-hero,
   .destination-card,
+  .qr-card,
   .metadata-card,
   .lifecycle-card,
   .analytics-card {

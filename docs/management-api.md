@@ -107,6 +107,7 @@ Supported query values are documented in Swagger. The defaults are page `1`, pag
 | `GET /api/v1/short-urls` | Query parameters | `200` collection | `400`, `401`, `403` |
 | `POST /api/v1/short-urls` | Optional `Idempotency-Key`; `{ originalUrl, customAlias?, customDomainId?, expiresAtUtc? }` | `201` resource | `400`, `401`, `403`, `409`, `413`, `429`, `500`, `504` |
 | `GET /api/v1/short-urls/{shortCode}` | None | `200` resource | `401`, `403`, `404` |
+| `GET /api/v1/short-urls/{shortCode}/qr-code` | Bounded SVG options | `200 image/svg+xml` | `400`, `401`, `403`, `404` |
 | `PUT /api/v1/short-urls/{shortCode}` | `{ originalUrl, customDomainId?, expiresAtUtc }` | `200` resource | `400`, `401`, `403`, `404`, `409` |
 | `PATCH /api/v1/short-urls/{shortCode}/status` | `{ isActive }` | `200` resource | `400`, `401`, `403`, `404` |
 | `DELETE /api/v1/short-urls/{shortCode}` | None | `204` | `401`, `403`, `404` |

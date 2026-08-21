@@ -19,8 +19,17 @@ namespace UrlShortener.Api.Controllers;
 public class ShortUrlsController : ControllerBase
 {
     private const int CreateRequestBodyLimitBytes = 8 * 1024;
+    private static readonly HashSet<string> QrCodeQueryKeys = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "size",
+        "format",
+        "errorCorrection",
+        "foreground",
+        "background"
+    };
 
     private readonly IShortUrlService _shortUrlService;
+    private readonly IQrCodeGenerator _qrCodeGenerator;
     private readonly IValidator<CreateShortUrlRequest> _createValidator;
     private readonly IValidator<UpdateShortUrlRequest> _updateValidator;
     private readonly IValidator<UpdateStatusRequest> _updateStatusValidator;
@@ -28,12 +37,14 @@ public class ShortUrlsController : ControllerBase
 
     public ShortUrlsController(
         IShortUrlService shortUrlService,
+        IQrCodeGenerator qrCodeGenerator,
         IValidator<CreateShortUrlRequest> createValidator,
         IValidator<UpdateShortUrlRequest> updateValidator,
         IValidator<UpdateStatusRequest> updateStatusValidator,
         IValidator<ShortUrlListQuery> listValidator)
     {
         _shortUrlService = shortUrlService;
+        _qrCodeGenerator = qrCodeGenerator;
         _createValidator = createValidator;
         _updateValidator = updateValidator;
         _updateStatusValidator = updateStatusValidator;
@@ -102,6 +113,41 @@ public class ShortUrlsController : ControllerBase
         }
 
         return Ok(response);
+    }
+
+    /// <summary>Generates an SVG QR code for an owned link's canonical short URL.</summary>
+    /// <remarks>
+    /// Size is limited to 128-1024 pixels. Format currently accepts svg. ErrorCorrection accepts
+    /// low, medium, quartile, or high. Foreground and background accept high-contrast six-digit hex colors.
+    /// The URL payload is resolved exclusively from the owned short-link resource.
+    /// </remarks>
+    [HttpGet("{shortCode}/qr-code")]
+    [Authorize(Policy = ApiKeyAuthorizationPolicies.ShortUrlsRead)]
+    [Produces("image/svg+xml")]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK, "image/svg+xml")]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetQrCode(
+        [FromRoute] string shortCode,
+        [FromQuery] QrCodeRequest request,
+        [FromServices] IValidator<QrCodeRequest> validator,
+        CancellationToken ct)
+    {
+        EnsureValidModel(request);
+        EnsureSupportedQrCodeQuery();
+        await validator.ValidateAndThrowAsync(request, ct);
+
+        var link = await _shortUrlService.GetAsync(shortCode, ct);
+        if (link == null)
+        {
+            return NotFound(ApiErrorFactory.Create(HttpContext, "NOT_FOUND", "Short URL not found."));
+        }
+
+        var document = _qrCodeGenerator.Generate(link.ShortUrl, request);
+        Response.Headers.CacheControl = "private, no-store";
+        Response.Headers["X-Content-Type-Options"] = "nosniff";
+        return File(document.Content, document.ContentType, $"{link.ShortCode}-qr.{document.FileExtension}");
     }
 
     [HttpPut("{shortCode}")]
@@ -198,6 +244,23 @@ public class ShortUrlsController : ControllerBase
     private string GetClientIp()
     {
         return ClientIpAddress.Normalize(HttpContext.Connection.RemoteIpAddress);
+    }
+
+    private void EnsureSupportedQrCodeQuery()
+    {
+        var unsupported = Request.Query.Keys
+            .Where(key => !QrCodeQueryKeys.Contains(key))
+            .Order(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (unsupported.Length == 0)
+        {
+            return;
+        }
+
+        throw new ValidationException(unsupported.Select(key =>
+            new FluentValidation.Results.ValidationFailure(
+                key,
+                $"Unsupported QR code option '{key}'.")));
     }
 
     private static string? ValidateIdempotencyKey(string? value)

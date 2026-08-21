@@ -141,6 +141,16 @@ export interface ShortUrlStatsQuery {
   readonly toUtc?: string;
 }
 
+export type QrCodeErrorCorrection = 'low' | 'medium' | 'quartile' | 'high';
+
+export interface QrCodeOptions {
+  readonly size?: number;
+  readonly format?: 'svg';
+  readonly errorCorrection?: QrCodeErrorCorrection;
+  readonly foreground?: `#${string}`;
+  readonly background?: `#${string}`;
+}
+
 export interface ShortUrlStats {
   readonly shortCode: string;
   readonly totalClicks: number;

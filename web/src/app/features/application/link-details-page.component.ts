@@ -190,6 +190,62 @@ interface ActionError {
               }
             </section>
 
+            @if (!currentLink.isDeleted) {
+              <section class="surface qr-card" aria-labelledby="qr-title">
+                <div class="section-heading-row">
+                  <div>
+                    <p class="eyebrow">Share offline</p>
+                    <h2 id="qr-title">QR code</h2>
+                  </div>
+                  <app-button
+                    variant="secondary"
+                    [loading]="qrDownloading()"
+                    [disabled]="qrDownloading()"
+                    (click)="downloadQrCode(currentLink)"
+                  >
+                    Download SVG
+                  </app-button>
+                </div>
+
+                <div class="qr-workspace" aria-live="polite">
+                  @if (qrLoading()) {
+                    <app-state-panel
+                      kind="loading"
+                      title="Generating preview"
+                      message="Building the QR code from the canonical short URL."
+                    />
+                  } @else if (qrError(); as error) {
+                    <app-state-panel
+                      kind="error"
+                      title="Preview unavailable"
+                      [message]="error"
+                      actionLabel="Try again"
+                      (action)="retryQrPreview()"
+                    />
+                  } @else if (qrPreviewUrl(); as previewUrl) {
+                    <img
+                      class="qr-preview"
+                      [src]="previewUrl"
+                      [alt]="'QR code for ' + currentLink.shortUrl"
+                      width="320"
+                      height="320"
+                    />
+                  }
+                </div>
+
+                <div class="qr-caption">
+                  <p>This QR code resolves to the exact canonical URL:</p>
+                  @if (externalUrl(currentLink.shortUrl); as shortUrl) {
+                    <a [href]="shortUrl" target="_blank" rel="noopener noreferrer">
+                      {{ currentLink.shortUrl }}
+                    </a>
+                  } @else {
+                    <span class="invalid-url">The API returned an invalid short URL.</span>
+                  }
+                </div>
+              </section>
+            }
+
             <section class="metric-grid" aria-label="Basic link statistics">
               <article class="surface metric-card">
                 <span class="metric-icon clicks"><app-icon name="analytics" /></span>
@@ -392,6 +448,7 @@ export class LinkDetailsPageComponent {
   private readonly destroyRef = inject(DestroyRef);
   private readonly deleteDialog = viewChild.required<ConfirmationDialogComponent>('deleteDialog');
   private activeLoad?: Subscription;
+  private activeQrLoad?: Subscription;
 
   protected readonly shortCode = signal('');
   protected readonly link = signal<ShortUrlResource | null>(null);
@@ -399,8 +456,13 @@ export class LinkDetailsPageComponent {
   protected readonly pageError = signal<PageError | null>(null);
   protected readonly actionError = signal<ActionError | null>(null);
   protected readonly pending = signal<LifecycleOperation | null>(null);
+  protected readonly qrPreviewUrl = signal<string | null>(null);
+  protected readonly qrLoading = signal(false);
+  protected readonly qrDownloading = signal(false);
+  protected readonly qrError = signal<string | null>(null);
 
   constructor() {
+    this.destroyRef.onDestroy(() => this.clearQrPreview());
     this.route.paramMap.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((params) => {
       const shortCode = params.get('shortCode')?.trim() ?? '';
       this.shortCode.set(shortCode);
@@ -530,6 +592,47 @@ export class LinkDetailsPageComponent {
     }
   }
 
+  protected retryQrPreview(): void {
+    const link = this.link();
+    if (link && !link.isDeleted) {
+      this.loadQrPreview(link);
+    }
+  }
+
+  protected downloadQrCode(link: ShortUrlResource): void {
+    if (link.isDeleted || this.qrDownloading()) {
+      return;
+    }
+
+    this.qrDownloading.set(true);
+    this.api
+      .qrCode(link.shortCode, { size: 640, format: 'svg', errorCorrection: 'medium' })
+      .pipe(
+        finalize(() => this.qrDownloading.set(false)),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe({
+        next: (qrCode) => {
+          const downloadUrl = URL.createObjectURL(qrCode);
+          const anchor = document.createElement('a');
+          anchor.href = downloadUrl;
+          anchor.download = `${link.shortCode}-qr.svg`;
+          document.body.append(anchor);
+          anchor.click();
+          anchor.remove();
+          window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 0);
+          this.toastService.show('QR code downloaded', 'The SVG is ready to share or print.');
+        },
+        error: (error: unknown) => {
+          this.toastService.show(
+            'QR code could not be downloaded',
+            this.describeQrError(error),
+            'error',
+          );
+        },
+      });
+  }
+
   protected toggleStatus(): void {
     const link = this.link();
     if (!link || link.isDeleted || this.pending()) {
@@ -609,6 +712,7 @@ export class LinkDetailsPageComponent {
       .subscribe({
         next: (restored) => {
           this.link.set(restored);
+          this.loadQrPreview(restored);
           this.toastService.show(
             'Link restored',
             restored.isActive
@@ -644,6 +748,7 @@ export class LinkDetailsPageComponent {
 
   private loadLink(shortCode: string): void {
     this.activeLoad?.unsubscribe();
+    this.clearQrPreview();
     this.actionError.set(null);
     this.pageError.set(null);
     this.link.set(null);
@@ -666,7 +771,12 @@ export class LinkDetailsPageComponent {
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe({
-        next: (resource) => this.link.set(resource),
+        next: (resource) => {
+          this.link.set(resource);
+          if (!resource.isDeleted) {
+            this.loadQrPreview(resource);
+          }
+        },
         error: (error: unknown) => this.pageError.set(this.describePageError(error)),
       });
   }
@@ -714,6 +824,52 @@ export class LinkDetailsPageComponent {
   private startOperation(operation: LifecycleOperation): void {
     this.actionError.set(null);
     this.pending.set(operation);
+  }
+
+  private loadQrPreview(link: ShortUrlResource): void {
+    this.clearQrPreview();
+    this.qrError.set(null);
+    this.qrLoading.set(true);
+    this.activeQrLoad = this.api
+      .qrCode(link.shortCode, { size: 320, format: 'svg', errorCorrection: 'medium' })
+      .pipe(
+        finalize(() => this.qrLoading.set(false)),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe({
+        next: (qrCode) => this.qrPreviewUrl.set(URL.createObjectURL(qrCode)),
+        error: (error: unknown) => this.qrError.set(this.describeQrError(error)),
+      });
+  }
+
+  private clearQrPreview(): void {
+    this.activeQrLoad?.unsubscribe();
+    this.activeQrLoad = undefined;
+    const previewUrl = this.qrPreviewUrl();
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+    }
+    this.qrPreviewUrl.set(null);
+    this.qrError.set(null);
+    this.qrLoading.set(false);
+  }
+
+  private describeQrError(error: unknown): string {
+    if (!(error instanceof ApiError)) {
+      return 'Something unexpected happened. Check your connection and try again.';
+    }
+    if (error.kind === 'authentication') {
+      return 'Your session has ended. Sign in again to generate this QR code.';
+    }
+    if (error.kind === 'not-found') {
+      return 'The link is no longer available to this account. Reload its details and try again.';
+    }
+    if (error.kind === 'rate-limited') {
+      return error.retryAfterSeconds
+        ? `QR generation is rate limited. Try again in about ${error.retryAfterSeconds} seconds.`
+        : 'QR generation is rate limited. Wait a moment and try again.';
+    }
+    return error.message;
   }
 
   private finishOperation(operation: LifecycleOperation): void {

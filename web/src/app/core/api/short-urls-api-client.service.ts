@@ -9,6 +9,7 @@ import {
   AnalyticsTimeSeries,
   AnalyticsTimeSeriesQuery,
   CreateShortUrlRequest,
+  QrCodeOptions,
   ShortUrlListQuery,
   ShortUrlListResponse,
   ShortUrlResource,
@@ -55,6 +56,20 @@ export class ShortUrlsApiClient {
 
   restore(shortCode: string): Observable<ShortUrlResource> {
     return this.http.post<ShortUrlResource>(`${this.resourceUrl(shortCode)}/restore`, null);
+  }
+
+  qrCode(shortCode: string, options: QrCodeOptions = {}): Observable<Blob> {
+    let params = new HttpParams();
+    params = this.setOptional(params, 'size', options.size);
+    params = this.setOptional(params, 'format', options.format);
+    params = this.setOptional(params, 'errorCorrection', options.errorCorrection);
+    params = this.setOptional(params, 'foreground', options.foreground);
+    params = this.setOptional(params, 'background', options.background);
+
+    return this.http.get(`${this.resourceUrl(shortCode)}/qr-code`, {
+      params,
+      responseType: 'blob',
+    });
   }
 
   stats(shortCode: string, query: ShortUrlStatsQuery = {}): Observable<ShortUrlStats> {
