@@ -182,7 +182,7 @@ public sealed class RedirectResolver : IRedirectResolver
 
     private static RedirectResolutionStatus EvaluateState(RedirectCandidate candidate, DateTime nowUtc)
     {
-        if (candidate.IsDeleted || !candidate.IsActive)
+        if (candidate.IsDeleted || !candidate.IsActive || candidate.IsModerationBlocked || candidate.IsOwnerUnavailable)
         {
             return RedirectResolutionStatus.NotFound;
         }
@@ -196,7 +196,7 @@ public sealed class RedirectResolver : IRedirectResolver
     }
 
     private static RedirectCandidate CreateCandidate(ShortUrlCacheModel model) =>
-        new(model.ShortUrlId, model.OriginalUrl, model.ExpiresAtUtc, true, false);
+        new(model.ShortUrlId, model.OriginalUrl, model.ExpiresAtUtc, true, false, false, false);
 
     private static RedirectCandidate CreateCandidate(RedirectLookupModel redirect) =>
         new(
@@ -204,12 +204,16 @@ public sealed class RedirectResolver : IRedirectResolver
             redirect.OriginalUrl,
             redirect.ExpiresAtUtc,
             redirect.IsActive,
-            redirect.IsDeleted);
+            redirect.IsDeleted,
+            redirect.IsModerationBlocked,
+            redirect.IsOwnerUnavailable);
 
     private sealed record RedirectCandidate(
         Guid ShortUrlId,
         string OriginalUrl,
         DateTime? ExpiresAtUtc,
         bool IsActive,
-        bool IsDeleted);
+        bool IsDeleted,
+        bool IsModerationBlocked,
+        bool IsOwnerUnavailable);
 }

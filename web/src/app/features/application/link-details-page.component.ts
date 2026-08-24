@@ -88,11 +88,20 @@ interface ActionError {
           />
         </section>
       } @else if (link(); as currentLink) {
-        @if (currentLink.isDeleted || currentLink.isExpired || !currentLink.isActive) {
+        @if (
+          currentLink.moderationStatus === 'blocked' ||
+          currentLink.isDeleted ||
+          currentLink.isExpired ||
+          !currentLink.isActive
+        ) {
           <section
             class="lifecycle-notice"
-            [class.deleted]="currentLink.isDeleted"
-            [class.expired]="currentLink.isExpired && !currentLink.isDeleted"
+            [class.deleted]="currentLink.isDeleted || currentLink.moderationStatus === 'blocked'"
+            [class.expired]="
+              currentLink.moderationStatus !== 'blocked' &&
+              currentLink.isExpired &&
+              !currentLink.isDeleted
+            "
             role="status"
           >
             <app-icon [name]="currentLink.isDeleted ? 'trash' : 'warning'" />
@@ -116,7 +125,10 @@ interface ActionError {
 
           @if (currentLink.isDeleted) {
             <p class="short-url unavailable">{{ currentLink.shortUrl }}</p>
-          } @else if (externalUrl(currentLink.shortUrl); as shortUrl) {
+          } @else if (
+            currentLink.moderationStatus !== 'blocked' && externalUrl(currentLink.shortUrl);
+            as shortUrl
+          ) {
             <a class="short-url" [href]="shortUrl" target="_blank" rel="noopener noreferrer">
               {{ currentLink.shortUrl }}
             </a>
@@ -128,7 +140,12 @@ interface ActionError {
             <app-button variant="secondary" (click)="copyShortUrl(currentLink)">
               Copy short URL
             </app-button>
-            @if (!currentLink.isDeleted && externalUrl(currentLink.shortUrl); as shortUrl) {
+            @if (
+              !currentLink.isDeleted &&
+              currentLink.moderationStatus !== 'blocked' &&
+              externalUrl(currentLink.shortUrl);
+              as shortUrl
+            ) {
               <a
                 class="button-link secondary"
                 [href]="shortUrl"
@@ -190,7 +207,7 @@ interface ActionError {
               }
             </section>
 
-            @if (!currentLink.isDeleted) {
+            @if (!currentLink.isDeleted && currentLink.moderationStatus !== 'blocked') {
               <section class="surface qr-card" aria-labelledby="qr-title">
                 <div class="section-heading-row">
                   <div>
@@ -471,6 +488,9 @@ export class LinkDetailsPageComponent {
   }
 
   protected status(link: ShortUrlResource): LinkStatus {
+    if (link.moderationStatus === 'blocked') {
+      return { label: 'Restricted', tone: 'danger' };
+    }
     if (link.isDeleted) {
       return { label: 'Deleted', tone: 'danger' };
     }
@@ -484,6 +504,9 @@ export class LinkDetailsPageComponent {
   }
 
   protected noticeTitle(link: ShortUrlResource): string {
+    if (link.moderationStatus === 'blocked') {
+      return 'This link is restricted';
+    }
     if (link.isDeleted) {
       return 'This link is deleted';
     }
@@ -494,6 +517,9 @@ export class LinkDetailsPageComponent {
   }
 
   protected noticeMessage(link: ShortUrlResource): string {
+    if (link.moderationStatus === 'blocked') {
+      return `It no longer redirects because of ${this.ownerModerationReason(link)}. Contact support if you believe this is incorrect.`;
+    }
     if (link.isDeleted) {
       return this.canRestore(link)
         ? 'It no longer redirects, but you can restore it before the deadline shown below.'
@@ -506,6 +532,9 @@ export class LinkDetailsPageComponent {
   }
 
   protected redirectState(link: ShortUrlResource): string {
+    if (link.moderationStatus === 'blocked') {
+      return 'Unavailable — restricted';
+    }
     if (link.isDeleted) {
       return 'Unavailable — deleted';
     }
@@ -594,13 +623,13 @@ export class LinkDetailsPageComponent {
 
   protected retryQrPreview(): void {
     const link = this.link();
-    if (link && !link.isDeleted) {
+    if (link && !link.isDeleted && link.moderationStatus !== 'blocked') {
       this.loadQrPreview(link);
     }
   }
 
   protected downloadQrCode(link: ShortUrlResource): void {
-    if (link.isDeleted || this.qrDownloading()) {
+    if (link.isDeleted || link.moderationStatus === 'blocked' || this.qrDownloading()) {
       return;
     }
 
@@ -659,6 +688,17 @@ export class LinkDetailsPageComponent {
         },
         error: (error: unknown) => this.handleMutationError(error, 'status'),
       });
+  }
+
+  private ownerModerationReason(link: ShortUrlResource): string {
+    switch (link.moderationPublicReasonCode) {
+      case 'unsafe_destination':
+        return 'an unsafe destination policy';
+      case 'abuse':
+        return 'the service abuse policy';
+      default:
+        return 'a service policy violation';
+    }
   }
 
   protected requestDelete(): void {
@@ -773,7 +813,7 @@ export class LinkDetailsPageComponent {
       .subscribe({
         next: (resource) => {
           this.link.set(resource);
-          if (!resource.isDeleted) {
+          if (!resource.isDeleted && resource.moderationStatus !== 'blocked') {
             this.loadQrPreview(resource);
           }
         },

@@ -17,4 +17,6 @@ public class ShortUrlResponse
     public DateTime? RestoreUntilUtc { get; set; }
     public long ClickCount { get; set; }
     public DateTime? LastAccessedAtUtc { get; set; }
+    public string ModerationStatus { get; set; } = "unreviewed";
+    public string? ModerationPublicReasonCode { get; set; }
 }

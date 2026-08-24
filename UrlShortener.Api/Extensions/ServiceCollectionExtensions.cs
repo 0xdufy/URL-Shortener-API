@@ -22,6 +22,7 @@ using UrlShortener.Application.ApiKeys;
 using UrlShortener.Application.CustomDomains;
 using UrlShortener.Application.Interfaces;
 using UrlShortener.Application.Services;
+using UrlShortener.Application.Security;
 using UrlShortener.Application.Validators;
 using UrlShortener.Infrastructure.Caching;
 using UrlShortener.Infrastructure.Configuration;
@@ -56,6 +57,7 @@ public static class ServiceCollectionExtensions
         var requestLimitsSection = configuration.GetRequiredSection(RequestLimitsOptions.SectionName);
         var clickEventSection = configuration.GetRequiredSection(ClickEventPrivacyOptions.SectionName);
         var customDomainSection = configuration.GetRequiredSection(CustomDomainOptions.SectionName);
+        var abuseControlSection = configuration.GetRequiredSection(AbuseControlOptions.SectionName);
 
         services.AddRabbitMqTransport(configuration, environment);
 
@@ -68,6 +70,17 @@ public static class ServiceCollectionExtensions
 
         var storageOptions = storageSection.Get<StorageOptions>()
             ?? throw new InvalidOperationException($"Configuration section '{StorageOptions.SectionName}' is invalid.");
+
+        var abuseControlOptions = abuseControlSection.Get<AbuseControlOptions>()
+            ?? throw new InvalidOperationException($"Configuration section '{AbuseControlOptions.SectionName}' is invalid.");
+        services.AddOptions<AbuseControlOptions>()
+            .Bind(abuseControlSection)
+            .Validate(
+                options => options.BlockedDestinationHosts is not null &&
+                    options.BlockedDestinationHosts.All(host =>
+                        DestinationHostPolicy.TryNormalizeHost(host, out _)),
+                "AbuseControls:BlockedDestinationHosts must contain valid DNS names or IP addresses.")
+            .ValidateOnStart();
 
         var proxyTrustOptions = proxyTrustSection.Get<ProxyTrustOptions>()
             ?? throw new InvalidOperationException($"Configuration section '{ProxyTrustOptions.SectionName}' is invalid.");
@@ -371,7 +384,8 @@ public static class ServiceCollectionExtensions
                     RequireExpirationTime = true,
                     RequireSignedTokens = true,
                     ClockSkew = TimeSpan.FromSeconds(identityOptions.JwtClockSkewSeconds),
-                    NameClaimType = JwtRegisteredClaimNames.Sub
+                    NameClaimType = JwtRegisteredClaimNames.Sub,
+                    RoleClaimType = System.Security.Claims.ClaimTypes.Role
                 };
                 options.Events = new JwtBearerEvents
                 {
@@ -428,6 +442,12 @@ public static class ServiceCollectionExtensions
                 options,
                 ApiKeyAuthorizationPolicies.AnalyticsRead,
                 ApiKeyScopeNames.AnalyticsRead);
+            options.AddPolicy(AuthorizationRoles.Moderator, policy =>
+            {
+                policy.AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme);
+                policy.RequireAuthenticatedUser();
+                policy.RequireRole(AuthorizationRoles.Moderator);
+            });
         });
 
         services.AddAntiforgery(options =>
@@ -497,6 +517,7 @@ public static class ServiceCollectionExtensions
         services.AddValidatorsFromAssemblyContaining<CreateShortUrlRequestValidator>();
 
         services.AddScoped<IShortUrlService, ShortUrlService>();
+        services.AddScoped<IShortUrlModerationService, ShortUrlModerationService>();
         services.AddSingleton<IQrCodeGenerator, QrCodeGeneratorService>();
         services.AddScoped<ICustomDomainService, CustomDomainService>();
         services.AddScoped<IAnalyticsQueryService, AnalyticsQueryService>();
@@ -509,6 +530,16 @@ public static class ServiceCollectionExtensions
             publicBaseUri.DnsSafeHost.ToLowerInvariant(),
             publicUrlOptions.CustomDomainScheme));
         services.AddSingleton(new IdempotencySettings(idempotencyOptions.RetentionHours));
+        var blockedHosts = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var host in abuseControlOptions.BlockedDestinationHosts)
+        {
+            if (DestinationHostPolicy.TryNormalizeHost(host, out var normalizedHost))
+            {
+                blockedHosts.Add(normalizedHost);
+            }
+        }
+        services.AddSingleton(new DestinationHostPolicySettings(blockedHosts));
+        services.AddSingleton<DestinationHostPolicy>();
         services.AddScoped<ICurrentUserContext, HttpCurrentUserContext>();
         if (storageOptions.UseInMemory)
         {

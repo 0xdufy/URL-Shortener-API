@@ -83,7 +83,7 @@ public static class ShortUrlInputPolicy
 
         try
         {
-            var idnHost = uri.IdnHost.ToLowerInvariant();
+            var idnHost = uri.IdnHost.TrimEnd('.').ToLowerInvariant();
             if (string.IsNullOrEmpty(idnHost) ||
                 (uri.HostNameType == UriHostNameType.Dns && idnHost.Length > MaximumReferrerHostLength))
             {

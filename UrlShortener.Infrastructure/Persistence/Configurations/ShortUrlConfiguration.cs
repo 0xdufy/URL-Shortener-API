@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using UrlShortener.Domain.Entities;
 using UrlShortener.Infrastructure.Identity;
+using UrlShortener.Domain.Moderation;
 
 namespace UrlShortener.Infrastructure.Persistence.Configurations;
 
@@ -50,12 +51,23 @@ public class ShortUrlConfiguration : IEntityTypeConfiguration<ShortUrl>
         builder.Property(x => x.LastAccessedAtUtc)
             .HasColumnType("datetime2");
 
+        builder.Property(x => x.ModerationStatus)
+            .HasConversion<int>()
+            .HasDefaultValue(ShortUrlModerationStatus.Unreviewed)
+            .IsRequired();
+        builder.Property(x => x.ModerationPublicReasonCode)
+            .HasMaxLength(50);
+        builder.Property(x => x.ModeratedAtUtc)
+            .HasColumnType("datetime2");
+        builder.Property(x => x.ModeratedByUserId);
+
         builder.HasIndex(x => x.ShortCode)
             .IsUnique()
             .HasDatabaseName("IX_ShortUrls_ShortCode");
 
         builder.HasIndex(x => x.IsDeleted);
         builder.HasIndex(x => x.ExpiresAtUtc);
+        builder.HasIndex(x => x.ModerationStatus);
         builder.HasIndex(x => new { x.OwnerId, x.IsDeleted, x.CreatedAtUtc, x.Id })
             .HasDatabaseName("IX_ShortUrls_OwnerId_IsDeleted_CreatedAtUtc_Id");
         builder.HasIndex(x => new { x.CustomDomainId, x.ShortCode })
@@ -70,6 +82,11 @@ public class ShortUrlConfiguration : IEntityTypeConfiguration<ShortUrl>
             .WithMany(x => x.ShortUrls)
             .HasForeignKey(x => new { x.CustomDomainId, x.OwnerId })
             .HasPrincipalKey(x => new { x.Id, x.OwnerId })
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne<ApplicationUser>()
+            .WithMany()
+            .HasForeignKey(x => x.ModeratedByUserId)
             .OnDelete(DeleteBehavior.Restrict);
 
     }

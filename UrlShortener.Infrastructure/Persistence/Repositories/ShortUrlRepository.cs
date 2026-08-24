@@ -5,6 +5,8 @@ using UrlShortener.Application.Interfaces;
 using UrlShortener.Domain.Analytics;
 using UrlShortener.Domain.Entities;
 using UrlShortener.Domain.CustomDomains;
+using UrlShortener.Domain.Moderation;
+using UrlShortener.Domain.Identity;
 
 namespace UrlShortener.Infrastructure.Persistence.Repositories;
 
@@ -87,7 +89,13 @@ public class ShortUrlRepository : IShortUrlRepository
                 RestoreUntilUtc = x.DeletedAtUtc.HasValue
                     ? x.DeletedAtUtc.Value.AddDays(criteria.RestoreRetentionDays)
                     : null,
-                ClickCount = x.ClickCount
+                ClickCount = x.ClickCount,
+                ModerationStatus = x.ModerationStatus == ShortUrlModerationStatus.Blocked
+                    ? "blocked"
+                    : x.ModerationStatus == ShortUrlModerationStatus.Cleared
+                        ? "cleared"
+                        : "unreviewed",
+                ModerationPublicReasonCode = x.ModerationPublicReasonCode
             })
             .ToListAsync(ct);
 
@@ -201,6 +209,14 @@ public class ShortUrlRepository : IShortUrlRepository
                 ct);
     }
 
+    public Task<ShortUrl?> GetByIdAsync(Guid id, CancellationToken ct) =>
+        _dbContext.ShortUrls
+            .Include(x => x.CustomDomain)
+            .FirstOrDefaultAsync(x => x.Id == id, ct);
+
+    public async Task AddModerationActionAsync(ShortUrlModerationAction action, CancellationToken ct) =>
+        await _dbContext.ShortUrlModerationActions.AddAsync(action, ct);
+
     public Task<RedirectLookupModel?> GetRedirectAsync(
         RedirectRouteIdentity route,
         CancellationToken ct)
@@ -224,7 +240,10 @@ public class ShortUrlRepository : IShortUrlRepository
                 x.OriginalUrl,
                 x.ExpiresAtUtc,
                 x.IsActive,
-                x.IsDeleted))
+                x.IsDeleted,
+                x.ModerationStatus == ShortUrlModerationStatus.Blocked,
+                !_dbContext.Users.Any(user =>
+                    user.Id == x.OwnerId && user.Status == UserAccountStatus.Active)))
             .FirstOrDefaultAsync(ct);
     }
 
@@ -244,6 +263,9 @@ public class ShortUrlRepository : IShortUrlRepository
                 x.ExpiresAtUtc == expectedExpiresAtUtc &&
                 !x.IsDeleted &&
                 x.IsActive &&
+                x.ModerationStatus != ShortUrlModerationStatus.Blocked &&
+                _dbContext.Users.Any(user =>
+                    user.Id == x.OwnerId && user.Status == UserAccountStatus.Active) &&
                 (!x.ExpiresAtUtc.HasValue || x.ExpiresAtUtc.Value > accessedAtUtc));
 
         query = route.IsDefaultHost

@@ -7,4 +7,6 @@ public sealed record RedirectLookupModel(
     string OriginalUrl,
     DateTime? ExpiresAtUtc,
     bool IsActive,
-    bool IsDeleted);
+    bool IsDeleted,
+    bool IsModerationBlocked,
+    bool IsOwnerUnavailable);

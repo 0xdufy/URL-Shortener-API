@@ -1,3 +1,5 @@
+using UrlShortener.Domain.Moderation;
+
 namespace UrlShortener.Domain.Entities;
 
 public class ShortUrl
@@ -29,7 +31,30 @@ public class ShortUrl
     public DateTime? DeletedAtUtc { get; set; }
     public long ClickCount { get; set; }
     public DateTime? LastAccessedAtUtc { get; set; }
+    public ShortUrlModerationStatus ModerationStatus { get; private set; } = ShortUrlModerationStatus.Unreviewed;
+    public string? ModerationPublicReasonCode { get; private set; }
+    public DateTime? ModeratedAtUtc { get; private set; }
+    public Guid? ModeratedByUserId { get; private set; }
     public ICollection<ShortUrlAccessLog> AccessLogs { get; set; } = new List<ShortUrlAccessLog>();
+
+    public void ApplyModeration(
+        ShortUrlModerationStatus status,
+        string? publicReasonCode,
+        Guid actorUserId,
+        DateTime moderatedAtUtc)
+    {
+        if (status == ShortUrlModerationStatus.Unreviewed)
+        {
+            throw new ArgumentException("A moderation action must clear or block a short URL.", nameof(status));
+        }
+
+        ModerationStatus = status;
+        ModerationPublicReasonCode = status == ShortUrlModerationStatus.Blocked
+            ? publicReasonCode
+            : null;
+        ModeratedByUserId = actorUserId;
+        ModeratedAtUtc = moderatedAtUtc;
+    }
 
     public void RouteThrough(CustomDomain? customDomain)
     {

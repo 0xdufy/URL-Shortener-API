@@ -381,7 +381,11 @@ export class OwnedLinksPageComponent {
   protected readonly activeOnPage = computed(
     () =>
       (this.response()?.items ?? []).filter(
-        (link) => link.isActive && !link.isExpired && !link.isDeleted,
+        (link) =>
+          link.isActive &&
+          !link.isExpired &&
+          !link.isDeleted &&
+          link.moderationStatus !== 'blocked',
       ).length,
   );
 
@@ -492,6 +496,9 @@ export class OwnedLinksPageComponent {
   }
 
   protected status(link: ShortUrlListItem): LinkStatus {
+    if (link.moderationStatus === 'blocked') {
+      return { label: 'Restricted', tone: 'danger' };
+    }
     if (link.isDeleted) {
       return { label: 'Deleted', tone: 'danger' };
     }

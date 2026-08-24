@@ -21,6 +21,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Guid
     public DbSet<RefreshSession> RefreshSessions => Set<RefreshSession>();
     public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
     public DbSet<CustomDomain> CustomDomains => Set<CustomDomain>();
+    public DbSet<ShortUrlModerationAction> ShortUrlModerationActions => Set<ShortUrlModerationAction>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

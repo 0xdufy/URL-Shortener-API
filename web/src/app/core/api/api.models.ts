@@ -61,6 +61,8 @@ export interface ShortUrlResource {
   readonly restoreUntilUtc: string | null;
   readonly clickCount: number;
   readonly lastAccessedAtUtc: string | null;
+  readonly moderationStatus: 'unreviewed' | 'cleared' | 'blocked';
+  readonly moderationPublicReasonCode: string | null;
 }
 
 export interface ShortUrlListItem {
@@ -78,6 +80,8 @@ export interface ShortUrlListItem {
   readonly deletedAtUtc: string | null;
   readonly restoreUntilUtc: string | null;
   readonly clickCount: number;
+  readonly moderationStatus: 'unreviewed' | 'cleared' | 'blocked';
+  readonly moderationPublicReasonCode: string | null;
 }
 
 export type ExpirationFilter = 'all' | 'expired' | 'notExpired';

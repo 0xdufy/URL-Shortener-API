@@ -6,6 +6,7 @@ using UrlShortener.Application.Exceptions;
 using UrlShortener.Application.Interfaces;
 using UrlShortener.Application.Security;
 using UrlShortener.Domain.Entities;
+using UrlShortener.Domain.Moderation;
 
 namespace UrlShortener.Application.Services;
 
@@ -23,6 +24,7 @@ public class ShortUrlService : IShortUrlService
     private readonly ShortUrlLifecycleSettings _lifecycleSettings;
     private readonly ShortUrlContractSettings _contractSettings;
     private readonly IdempotencySettings _idempotencySettings;
+    private readonly DestinationHostPolicy _destinationHostPolicy;
 
     public ShortUrlService(
         IShortUrlRepository repository,
@@ -33,7 +35,8 @@ public class ShortUrlService : IShortUrlService
         ICurrentUserContext currentUserContext,
         ShortUrlLifecycleSettings lifecycleSettings,
         ShortUrlContractSettings contractSettings,
-        IdempotencySettings idempotencySettings)
+        IdempotencySettings idempotencySettings,
+        DestinationHostPolicy destinationHostPolicy)
     {
         _repository = repository;
         _shortCodeGenerator = shortCodeGenerator;
@@ -44,6 +47,7 @@ public class ShortUrlService : IShortUrlService
         _lifecycleSettings = lifecycleSettings;
         _contractSettings = contractSettings;
         _idempotencySettings = idempotencySettings;
+        _destinationHostPolicy = destinationHostPolicy;
     }
 
     public async Task<ShortUrlListResponse> ListAsync(ShortUrlListQuery query, CancellationToken ct)
@@ -459,10 +463,22 @@ public class ShortUrlService : IShortUrlService
         return userId.Value;
     }
 
-    private static string NormalizeDestinationUrl(string originalUrl)
+    private string NormalizeDestinationUrl(string originalUrl)
     {
         if (ShortUrlInputPolicy.TryNormalizeDestinationUrl(originalUrl, out var normalizedUrl))
         {
+            var destination = new Uri(normalizedUrl, UriKind.Absolute);
+            if (_destinationHostPolicy.IsBlocked(destination))
+            {
+                throw new FluentValidation.ValidationException(
+                    new[]
+                    {
+                        new FluentValidation.Results.ValidationFailure(
+                            nameof(CreateShortUrlRequest.OriginalUrl),
+                            "The destination host is not permitted by service policy.")
+                    });
+            }
+
             return normalizedUrl;
         }
 
@@ -511,6 +527,13 @@ public class ShortUrlService : IShortUrlService
 
     private async Task CacheRedirectAsync(ShortUrl entity, DateTime nowUtc, CancellationToken ct)
     {
+        if (entity.ModerationStatus == ShortUrlModerationStatus.Blocked ||
+            entity.IsDeleted ||
+            !entity.IsActive)
+        {
+            return;
+        }
+
         if (entity.CustomDomainId.HasValue &&
             entity.CustomDomain is not { CanServeBrandedLinks: true })
         {
@@ -555,7 +578,9 @@ public class ShortUrlService : IShortUrlService
             DeletedAtUtc = AsUtc(entity.DeletedAtUtc),
             RestoreUntilUtc = AsUtc(entity.DeletedAtUtc?.AddDays(_lifecycleSettings.RestoreRetentionDays)),
             ClickCount = entity.ClickCount,
-            LastAccessedAtUtc = AsUtc(entity.LastAccessedAtUtc)
+            LastAccessedAtUtc = AsUtc(entity.LastAccessedAtUtc),
+            ModerationStatus = entity.ModerationStatus.ToString().ToLowerInvariant(),
+            ModerationPublicReasonCode = entity.ModerationPublicReasonCode
         };
     }
 

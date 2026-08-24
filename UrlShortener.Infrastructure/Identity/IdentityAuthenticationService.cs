@@ -215,7 +215,7 @@ public sealed class IdentityAuthenticationService : IAuthenticationService
             throw new InvalidSessionException();
         }
 
-        return IssueSession(session.User, replacement, replacementToken, currentSecurityStamp);
+        return await IssueSessionAsync(session.User, replacement, replacementToken, currentSecurityStamp);
     }
 
     public async Task SignOutAsync(string? refreshToken, CancellationToken cancellationToken)
@@ -287,16 +287,17 @@ public sealed class IdentityAuthenticationService : IAuthenticationService
 
         _dbContext.RefreshSessions.Add(session);
         await _dbContext.SaveChangesAsync(cancellationToken);
-        return IssueSession(user, session, refreshToken, securityStamp);
+        return await IssueSessionAsync(user, session, refreshToken, securityStamp);
     }
 
-    private IssuedAuthenticationSession IssueSession(
+    private async Task<IssuedAuthenticationSession> IssueSessionAsync(
         ApplicationUser user,
         RefreshSession session,
         string refreshToken,
         string securityStamp)
     {
-        var accessToken = _accessTokenIssuer.Issue(user.Id, session.Id, securityStamp);
+        var roles = await _userManager.GetRolesAsync(user);
+        var accessToken = _accessTokenIssuer.Issue(user.Id, session.Id, securityStamp, roles.ToArray());
         return new IssuedAuthenticationSession(
             accessToken.Value,
             accessToken.ExpiresAtUtc,

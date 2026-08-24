@@ -1,6 +1,7 @@
 using UrlShortener.Application.Interfaces;
 using UrlShortener.Application.Dtos;
 using UrlShortener.Domain.Entities;
+using UrlShortener.Domain.Moderation;
 
 namespace UrlShortener.Infrastructure.Persistence.Repositories;
 
@@ -11,6 +12,7 @@ public class InMemoryShortUrlRepository : IShortUrlRepository
     private readonly Dictionary<string, Guid> _shortUrlIdsByCode = new(StringComparer.Ordinal);
     private readonly Dictionary<(Guid OwnerId, string KeyHash), ShortUrlCreationIdempotencyRecord>
         _idempotencyRecords = new();
+    private readonly List<ShortUrlModerationAction> _moderationActions = [];
 
     public Task<ShortUrlListResult> ListOwnedAsync(ShortUrlListCriteria criteria, CancellationToken ct)
     {
@@ -77,7 +79,9 @@ public class InMemoryShortUrlRepository : IShortUrlRepository
                     IsDeleted = x.IsDeleted,
                     DeletedAtUtc = x.DeletedAtUtc,
                     RestoreUntilUtc = x.DeletedAtUtc?.AddDays(criteria.RestoreRetentionDays),
-                    ClickCount = x.ClickCount
+                    ClickCount = x.ClickCount,
+                    ModerationStatus = x.ModerationStatus.ToString().ToLowerInvariant(),
+                    ModerationPublicReasonCode = x.ModerationPublicReasonCode
                 })
                 .ToList();
 
@@ -199,6 +203,25 @@ public class InMemoryShortUrlRepository : IShortUrlRepository
         }
     }
 
+    public Task<ShortUrl?> GetByIdAsync(Guid id, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        lock (_sync)
+        {
+            return Task.FromResult(_shortUrlsById.GetValueOrDefault(id));
+        }
+    }
+
+    public Task AddModerationActionAsync(ShortUrlModerationAction action, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        lock (_sync)
+        {
+            _moderationActions.Add(action);
+            return Task.CompletedTask;
+        }
+    }
+
     public Task<RedirectLookupModel?> GetRedirectAsync(
         RedirectRouteIdentity route,
         CancellationToken ct)
@@ -218,7 +241,9 @@ public class InMemoryShortUrlRepository : IShortUrlRepository
                     entity.OriginalUrl,
                     entity.ExpiresAtUtc,
                     entity.IsActive,
-                    entity.IsDeleted));
+                    entity.IsDeleted,
+                    entity.ModerationStatus == ShortUrlModerationStatus.Blocked,
+                    false));
             }
 
             return Task.FromResult<RedirectLookupModel?>(null);
@@ -248,6 +273,7 @@ public class InMemoryShortUrlRepository : IShortUrlRepository
                 entity.ExpiresAtUtc == expectedExpiresAtUtc &&
                 !entity.IsDeleted &&
                 entity.IsActive &&
+                entity.ModerationStatus != ShortUrlModerationStatus.Blocked &&
                 (!entity.ExpiresAtUtc.HasValue || entity.ExpiresAtUtc.Value > accessedAtUtc);
 
             return Task.FromResult(isCurrent);

@@ -31,7 +31,11 @@ public sealed class JwtAccessTokenIssuer : IAccessTokenIssuer
             SecurityAlgorithms.HmacSha256);
     }
 
-    public IssuedAccessToken Issue(Guid userId, Guid sessionId, string securityStamp)
+    public IssuedAccessToken Issue(
+        Guid userId,
+        Guid sessionId,
+        string securityStamp,
+        IReadOnlyCollection<string> roles)
     {
         var nowUtc = _dateTimeProvider.UtcNow;
         var expiresAtUtc = nowUtc.AddMinutes(_options.AccessTokenLifetimeMinutes);
@@ -41,16 +45,19 @@ public sealed class JwtAccessTokenIssuer : IAccessTokenIssuer
             .Replace('+', '-')
             .Replace('/', '_');
 
+        var claims = new List<Claim>
+        {
+            new(JwtRegisteredClaimNames.Sub, userId.ToString()),
+            new(SessionIdClaim, sessionId.ToString()),
+            new(SecurityVersionClaim, securityVersion),
+            new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
+        };
+        claims.AddRange(roles.Select(role => new Claim(ClaimTypes.Role, role)));
+
         var token = new JwtSecurityToken(
             issuer: _options.JwtIssuer,
             audience: _options.JwtAudience,
-            claims:
-            [
-                new Claim(JwtRegisteredClaimNames.Sub, userId.ToString()),
-                new Claim(SessionIdClaim, sessionId.ToString()),
-                new Claim(SecurityVersionClaim, securityVersion),
-                new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
-            ],
+            claims: claims,
             notBefore: nowUtc,
             expires: expiresAtUtc,
             signingCredentials: _signingCredentials);

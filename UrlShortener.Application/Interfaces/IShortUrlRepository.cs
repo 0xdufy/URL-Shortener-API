@@ -13,6 +13,8 @@ public interface IShortUrlRepository
         CancellationToken ct);
     Task<ShortUrl?> GetOwnedByShortCodeNotDeletedAsync(string shortCode, Guid ownerId, CancellationToken ct);
     Task<ShortUrl?> GetOwnedByShortCodeAsync(string shortCode, Guid ownerId, CancellationToken ct);
+    Task<ShortUrl?> GetByIdAsync(Guid id, CancellationToken ct);
+    Task AddModerationActionAsync(ShortUrlModerationAction action, CancellationToken ct);
     Task<RedirectLookupModel?> GetRedirectAsync(RedirectRouteIdentity route, CancellationToken ct);
     Task<bool> IsRedirectCurrentAsync(
         Guid shortUrlId,

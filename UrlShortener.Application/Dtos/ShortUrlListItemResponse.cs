@@ -16,4 +16,6 @@ public sealed class ShortUrlListItemResponse
     public DateTime? DeletedAtUtc { get; set; }
     public DateTime? RestoreUntilUtc { get; set; }
     public long ClickCount { get; set; }
+    public string ModerationStatus { get; set; } = "unreviewed";
+    public string? ModerationPublicReasonCode { get; set; }
 }
