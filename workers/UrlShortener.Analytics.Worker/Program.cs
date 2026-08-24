@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using UrlShortener.Analytics.Worker;
+using UrlShortener.Analytics.Worker.Maintenance;
 using UrlShortener.Application.Interfaces;
 using UrlShortener.Application.Services;
 using UrlShortener.Infrastructure.Configuration;
@@ -42,6 +43,7 @@ builder.Services.AddDbContext<AppDbContext>((serviceProvider, options) =>
 builder.Services.AddRabbitMqTransport(builder.Configuration, builder.Environment);
 builder.Services.AddScoped<IClickEventPersistence, ClickEventPersistence>();
 builder.Services.AddScoped<ClickEventHandler>();
+builder.Services.AddMaintenanceScheduling(builder.Configuration);
 builder.Services.AddHostedService<TransportStartupService>();
 builder.Services.AddHostedService<AnalyticsWorkerService>();
 
