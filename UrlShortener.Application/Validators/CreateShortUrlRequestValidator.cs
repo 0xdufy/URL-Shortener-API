@@ -1,6 +1,7 @@
 using FluentValidation;
 using UrlShortener.Application.Dtos;
 using UrlShortener.Application.Interfaces;
+using UrlShortener.Application.Security;
 
 namespace UrlShortener.Application.Validators;
 
@@ -11,13 +12,17 @@ public class CreateShortUrlRequestValidator : AbstractValidator<CreateShortUrlRe
         RuleFor(x => x.OriginalUrl)
             .Cascade(CascadeMode.Stop)
             .NotEmpty()
-            .MaximumLength(2048)
+            .MaximumLength(ShortUrlInputPolicy.MaximumDestinationUrlLength)
             .Must(BeValidUrl)
-            .WithMessage("OriginalUrl must be an absolute http or https URL.");
+            .WithMessage("OriginalUrl must be an absolute http or https URL without credentials or surrounding whitespace.");
 
         RuleFor(x => x.CustomAlias)
-            .Length(4, 20)
-            .Matches("^[A-Za-z0-9_-]+$")
+            .Cascade(CascadeMode.Stop)
+            .Length(ShortUrlInputPolicy.MinimumShortCodeLength, ShortUrlInputPolicy.MaximumShortCodeLength)
+            .Must(alias => ShortUrlInputPolicy.IsValidShortCode(alias))
+            .WithMessage("CustomAlias may contain only ASCII letters, digits, underscores, or hyphens.")
+            .Must(alias => !ShortUrlInputPolicy.IsReservedAlias(alias))
+            .WithMessage("CustomAlias uses a reserved platform route or route prefix.")
             .When(x => !string.IsNullOrWhiteSpace(x.CustomAlias));
 
         RuleFor(x => x.ExpiresAtUtc)
@@ -30,11 +35,6 @@ public class CreateShortUrlRequestValidator : AbstractValidator<CreateShortUrlRe
 
     private static bool BeValidUrl(string url)
     {
-        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
-        {
-            return false;
-        }
-
-        return uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps;
+        return ShortUrlInputPolicy.TryNormalizeDestinationUrl(url, out _);
     }
 }

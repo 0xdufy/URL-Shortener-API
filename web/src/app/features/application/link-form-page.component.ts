@@ -34,6 +34,30 @@ type AliasMode = 'generated' | 'custom';
 type LinkField = 'originalUrl' | 'customAlias' | 'customDomainId' | 'expiresAtUtc';
 
 const UNAVAILABLE_DOMAIN = '__unavailable__';
+const RESERVED_ALIAS_ROOTS = [
+  'api',
+  'auth',
+  'health',
+  'healthz',
+  'live',
+  'livez',
+  'ready',
+  'readyz',
+  'metrics',
+  'swagger',
+  'openapi',
+  'docs',
+  'app',
+  'r',
+  'dashboard',
+  'links',
+  'analytics',
+  'api-keys',
+  'domains',
+  'account',
+  'sign-in',
+  'register',
+] as const;
 
 interface FormAlert {
   readonly title: string;
@@ -227,7 +251,7 @@ interface LoadError {
                   <app-field
                     controlId="custom-alias"
                     label="Custom alias"
-                    hint="Use 4–20 letters, numbers, hyphens, or underscores."
+                    hint="Use 4–20 letters, numbers, hyphens, or underscores. Platform route names are reserved."
                     [error]="fieldError('customAlias')"
                   >
                     <div class="alias-input">
@@ -414,7 +438,12 @@ export class LinkFormPageComponent implements OnInit {
     aliasMode: ['generated' as AliasMode],
     customAlias: [
       '',
-      [Validators.minLength(4), Validators.maxLength(20), Validators.pattern(/^[A-Za-z0-9_-]+$/)],
+      [
+        Validators.minLength(4),
+        Validators.maxLength(20),
+        Validators.pattern(/^[A-Za-z0-9_-]+$/),
+        availableCustomAlias,
+      ],
     ],
     customDomainId: ['', [availableDomainSelection]],
     expiresAtLocal: ['', [futureLocalDateTime]],
@@ -529,6 +558,9 @@ export class LinkFormPageComponent implements OnInit {
     }
     if (control.hasError('pattern')) {
       return 'Use only letters, numbers, hyphens, and underscores.';
+    }
+    if (control.hasError('reservedAlias')) {
+      return 'Choose an alias that does not use a reserved platform route.';
     }
     if (control.hasError('invalidDateTime')) {
       return 'Enter a valid expiry date and time.';
@@ -853,12 +885,25 @@ function absoluteHttpUrl(control: AbstractControl<string>): ValidationErrors | n
   }
   try {
     const url = new URL(value);
-    return (url.protocol === 'http:' || url.protocol === 'https:') && url.hostname
+    return (url.protocol === 'http:' || url.protocol === 'https:') &&
+      url.hostname &&
+      !url.username &&
+      !url.password &&
+      url.href.length <= 2048
       ? null
       : { httpUrl: true };
   } catch {
     return { httpUrl: true };
   }
+}
+
+function availableCustomAlias(control: AbstractControl<string>): ValidationErrors | null {
+  const alias = control.value.toLowerCase();
+  return RESERVED_ALIAS_ROOTS.some(
+    (root) => alias === root || alias.startsWith(`${root}-`) || alias.startsWith(`${root}_`),
+  )
+    ? { reservedAlias: true }
+    : null;
 }
 
 function futureLocalDateTime(control: AbstractControl<string>): ValidationErrors | null {

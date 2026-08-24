@@ -1,6 +1,7 @@
 using FluentValidation;
 using UrlShortener.Application.Dtos;
 using UrlShortener.Application.Interfaces;
+using UrlShortener.Application.Security;
 
 namespace UrlShortener.Application.Validators;
 
@@ -11,9 +12,9 @@ public sealed class UpdateShortUrlRequestValidator : AbstractValidator<UpdateSho
         RuleFor(x => x.OriginalUrl)
             .Cascade(CascadeMode.Stop)
             .NotEmpty()
-            .MaximumLength(2048)
+            .MaximumLength(ShortUrlInputPolicy.MaximumDestinationUrlLength)
             .Must(BeValidUrl)
-            .WithMessage("OriginalUrl must be an absolute http or https URL.");
+            .WithMessage("OriginalUrl must be an absolute http or https URL without credentials or surrounding whitespace.");
 
         RuleFor(x => x.ExpiresAtUtc)
             .Cascade(CascadeMode.Stop)
@@ -25,11 +26,6 @@ public sealed class UpdateShortUrlRequestValidator : AbstractValidator<UpdateSho
 
     private static bool BeValidUrl(string url)
     {
-        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
-        {
-            return false;
-        }
-
-        return uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps;
+        return ShortUrlInputPolicy.TryNormalizeDestinationUrl(url, out _);
     }
 }

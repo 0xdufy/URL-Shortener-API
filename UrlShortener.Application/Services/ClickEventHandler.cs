@@ -1,14 +1,12 @@
 using UrlShortener.Application.Interfaces;
 using UrlShortener.Application.Messaging;
+using UrlShortener.Application.Security;
 
 namespace UrlShortener.Application.Services;
 
 public sealed class ClickEventHandler
 {
     private const int MaximumVisitorIdentifierLength = 64;
-    private const int MaximumReferrerHostLength = 253;
-    private const int MaximumUserAgentLength = 256;
-
     private readonly IClickEventPersistence _persistence;
 
     public ClickEventHandler(IClickEventPersistence persistence)
@@ -54,14 +52,14 @@ public sealed class ClickEventHandler
             !string.IsNullOrWhiteSpace(payload.PseudonymousVisitorId) &&
             payload.PseudonymousVisitorId.Length <= MaximumVisitorIdentifierLength &&
             IsValidReferrer(payload.ReferrerHost, payload.ReferrerKind) &&
-            (payload.UserAgent is null || payload.UserAgent.Length <= MaximumUserAgentLength);
+            (payload.UserAgent is null || payload.UserAgent.Length <= ShortUrlInputPolicy.MaximumUserAgentLength);
     }
 
     private static bool IsValidReferrer(string? referrerHost, string? referrerKind)
     {
         if (referrerKind is null)
         {
-            return referrerHost is null || referrerHost.Length <= MaximumReferrerHostLength;
+            return referrerHost is null || referrerHost.Length <= ShortUrlInputPolicy.MaximumReferrerHostLength;
         }
 
         return referrerKind switch
@@ -70,7 +68,7 @@ public sealed class ClickEventHandler
                 referrerHost is null,
             ClickEventContract.ReferrerKindHost =>
                 !string.IsNullOrWhiteSpace(referrerHost) &&
-                referrerHost.Length <= MaximumReferrerHostLength,
+                referrerHost.Length <= ShortUrlInputPolicy.MaximumReferrerHostLength,
             _ => false
         };
     }

@@ -3,6 +3,7 @@ using FluentValidation.Results;
 using UrlShortener.Application.Dtos;
 using UrlShortener.Application.Exceptions;
 using UrlShortener.Application.Interfaces;
+using UrlShortener.Application.Security;
 using UrlShortener.Domain.Analytics;
 
 namespace UrlShortener.Application.Services;
@@ -32,6 +33,11 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         string shortCode,
         CancellationToken ct)
     {
+        if (!ShortUrlInputPolicy.IsValidShortCode(shortCode))
+        {
+            return null;
+        }
+
         var nowUtc = AsUtc(_dateTimeProvider.UtcNow);
         var maximumToUtc = StartOfDay(nowUtc).AddDays(1);
         var toUtc = query.ToUtc?.UtcDateTime ?? maximumToUtc;
@@ -74,6 +80,11 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         string shortCode,
         CancellationToken ct)
     {
+        if (!ShortUrlInputPolicy.IsValidShortCode(shortCode))
+        {
+            return null;
+        }
+
         var granularity = ParseGranularity(query.Granularity);
         var bucketSize = granularity == AnalyticsBucketGranularity.Hour
             ? TimeSpan.FromHours(1)

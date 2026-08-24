@@ -45,6 +45,8 @@ Use exactly one of:
 - `authentication.md` describes account and session behavior.
 - `http-auth-security.md` records the trusted-origin, CSRF, credential, HTTPS/proxy, security
   header, error, logging, and manual configuration-review boundary.
+- `url-alias-input-security.md` defines destination parsing/canonicalization, IDN display,
+  reserved aliases, short-code bounds, and redirect metadata limits.
 - `authorization.md` defines protected management routes, owner-scoped access, and the 401/403/404 concealment policy.
 - `management-api.md` is the finalized Angular-facing management resource, pagination/filter, error, UTC timestamp, and public URL contract.
 - `api-key-security.md` defines API-key format/entropy, hash-only persistence, fixed scopes,

@@ -4,6 +4,7 @@ using System.Text;
 using UrlShortener.Application.Dtos;
 using UrlShortener.Application.Exceptions;
 using UrlShortener.Application.Interfaces;
+using UrlShortener.Application.Security;
 using UrlShortener.Domain.Entities;
 
 namespace UrlShortener.Application.Services;
@@ -108,6 +109,7 @@ public class ShortUrlService : IShortUrlService
         CancellationToken ct)
     {
         _ = clientIp;
+        req.OriginalUrl = NormalizeDestinationUrl(req.OriginalUrl);
         var ownerId = RequireCurrentUserId();
         var nowUtc = _dateTimeProvider.UtcNow;
         var customDomain = await ResolveCustomDomainAsync(req.CustomDomainId, ownerId, ct);
@@ -132,6 +134,12 @@ public class ShortUrlService : IShortUrlService
             for (var attempt = 0; attempt < MaxGeneratedShortCodeAttempts; attempt++)
             {
                 var generatedCode = _shortCodeGenerator.Generate(GeneratedShortCodeLength);
+                if (!ShortUrlInputPolicy.IsValidShortCode(generatedCode) ||
+                    ShortUrlInputPolicy.IsReservedAlias(generatedCode))
+                {
+                    continue;
+                }
+
                 var candidate = CreateEntity(req, generatedCode, ownerId, customDomain, nowUtc);
                 var creationResult = await TryCreateAsync(candidate, idempotency, ct);
                 if (creationResult.Outcome == IdempotentShortUrlCreationOutcome.RequestConflict)
@@ -276,6 +284,11 @@ public class ShortUrlService : IShortUrlService
 
     public async Task<ShortUrlResponse?> GetAsync(string shortCode, CancellationToken ct)
     {
+        if (!ShortUrlInputPolicy.IsValidShortCode(shortCode))
+        {
+            return null;
+        }
+
         var ownerId = RequireCurrentUserId();
         var entity = await _repository.GetOwnedByShortCodeNotDeletedAsync(shortCode, ownerId, ct);
         if (entity == null)
@@ -291,6 +304,12 @@ public class ShortUrlService : IShortUrlService
         UpdateShortUrlRequest request,
         CancellationToken ct)
     {
+        if (!ShortUrlInputPolicy.IsValidShortCode(shortCode))
+        {
+            return null;
+        }
+
+        request.OriginalUrl = NormalizeDestinationUrl(request.OriginalUrl);
         var ownerId = RequireCurrentUserId();
         var entity = await _repository.GetOwnedByShortCodeNotDeletedAsync(shortCode, ownerId, ct);
         if (entity == null)
@@ -317,6 +336,11 @@ public class ShortUrlService : IShortUrlService
 
     public async Task<ShortUrlResponse?> SetStatusAsync(string shortCode, bool isActive, CancellationToken ct)
     {
+        if (!ShortUrlInputPolicy.IsValidShortCode(shortCode))
+        {
+            return null;
+        }
+
         var ownerId = RequireCurrentUserId();
         var entity = await _repository.GetOwnedByShortCodeNotDeletedAsync(shortCode, ownerId, ct);
         if (entity == null)
@@ -334,6 +358,11 @@ public class ShortUrlService : IShortUrlService
 
     public async Task<bool> DeleteAsync(string shortCode, CancellationToken ct)
     {
+        if (!ShortUrlInputPolicy.IsValidShortCode(shortCode))
+        {
+            return false;
+        }
+
         var ownerId = RequireCurrentUserId();
         var entity = await _repository.GetOwnedByShortCodeNotDeletedAsync(shortCode, ownerId, ct);
         if (entity == null)
@@ -352,6 +381,11 @@ public class ShortUrlService : IShortUrlService
 
     public async Task<ShortUrlResponse> RestoreAsync(string shortCode, CancellationToken ct)
     {
+        if (!ShortUrlInputPolicy.IsValidShortCode(shortCode))
+        {
+            throw new NotFoundException("Short URL not found.");
+        }
+
         var ownerId = RequireCurrentUserId();
         var entity = await _repository.GetOwnedByShortCodeAsync(shortCode, ownerId, ct);
         if (entity == null)
@@ -381,6 +415,11 @@ public class ShortUrlService : IShortUrlService
 
     public async Task<StatsResponse?> GetStatsAsync(string shortCode, DateTime? fromUtc, DateTime? toUtc, CancellationToken ct)
     {
+        if (!ShortUrlInputPolicy.IsValidShortCode(shortCode))
+        {
+            return null;
+        }
+
         var ownerId = RequireCurrentUserId();
         var entity = await _repository.GetOwnedByShortCodeNotDeletedAsync(shortCode, ownerId, ct);
         if (entity == null)
@@ -420,6 +459,22 @@ public class ShortUrlService : IShortUrlService
         }
 
         return userId.Value;
+    }
+
+    private static string NormalizeDestinationUrl(string originalUrl)
+    {
+        if (ShortUrlInputPolicy.TryNormalizeDestinationUrl(originalUrl, out var normalizedUrl))
+        {
+            return normalizedUrl;
+        }
+
+        throw new FluentValidation.ValidationException(
+            new[]
+            {
+                new FluentValidation.Results.ValidationFailure(
+                    nameof(CreateShortUrlRequest.OriginalUrl),
+                    "OriginalUrl must be an absolute http or https URL without credentials or surrounding whitespace.")
+            });
     }
 
     private static ShortUrlExpirationFilter ParseExpiration(string value) =>

@@ -6,15 +6,13 @@ using Microsoft.Extensions.Options;
 using UrlShortener.Application.Dtos;
 using UrlShortener.Application.Interfaces;
 using UrlShortener.Application.Messaging;
+using UrlShortener.Application.Security;
 using UrlShortener.Infrastructure.Configuration;
 
 namespace UrlShortener.Infrastructure.Messaging;
 
 public sealed class PrivacyAwareRedirectClickEventPublisher : IRedirectClickEventPublisher
 {
-    private const int MaximumUserAgentLength = 256;
-    private const int MaximumReferrerHostLength = 253;
-
     private readonly IEventPublisher _eventPublisher;
     private readonly ILogger<PrivacyAwareRedirectClickEventPublisher> _logger;
     private readonly byte[] _visitorIdentityKey;
@@ -53,7 +51,7 @@ public sealed class PrivacyAwareRedirectClickEventPublisher : IRedirectClickEven
                 request.ShortUrlId,
                 request.AccessedAtUtc,
                 referrer.Host,
-                Truncate(request.UserAgent, MaximumUserAgentLength),
+                Truncate(request.UserAgent, ShortUrlInputPolicy.MaximumUserAgentLength),
                 CreatePseudonymousVisitorId(
                     request.ClientIpAddress,
                     visitorIdentityPeriodUtc),
@@ -112,6 +110,12 @@ public sealed class PrivacyAwareRedirectClickEventPublisher : IRedirectClickEven
             return new ReferrerMetadata(null, ClickEventContract.ReferrerKindDirect);
         }
 
+        if (referer.Length > ShortUrlInputPolicy.MaximumRawReferrerLength ||
+            referer.Any(character => char.IsControl(character)))
+        {
+            return new ReferrerMetadata(null, ClickEventContract.ReferrerKindUnknown);
+        }
+
         if (!Uri.TryCreate(referer, UriKind.Absolute, out var uri) ||
             (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
         {
@@ -121,7 +125,7 @@ public sealed class PrivacyAwareRedirectClickEventPublisher : IRedirectClickEven
         try
         {
             var host = uri.IdnHost.ToLowerInvariant();
-            return host.Length is > 0 and <= MaximumReferrerHostLength
+            return host.Length is > 0 and <= ShortUrlInputPolicy.MaximumReferrerHostLength
                 ? new ReferrerMetadata(host, ClickEventContract.ReferrerKindHost)
                 : new ReferrerMetadata(null, ClickEventContract.ReferrerKindUnknown);
         }

@@ -1,6 +1,7 @@
 using UrlShortener.Application.Dtos;
 using UrlShortener.Application.CustomDomains;
 using UrlShortener.Application.Interfaces;
+using UrlShortener.Application.Security;
 
 namespace UrlShortener.Application.Services;
 
@@ -163,7 +164,7 @@ public sealed class RedirectResolver : IRedirectResolver
 
     private RedirectRouteIdentity? CreateRoute(string effectiveHost, string shortCode)
     {
-        if (string.IsNullOrWhiteSpace(effectiveHost))
+        if (string.IsNullOrWhiteSpace(effectiveHost) || !ShortUrlInputPolicy.IsValidShortCode(shortCode))
         {
             return null;
         }

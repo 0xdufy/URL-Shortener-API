@@ -10,14 +10,21 @@ concurrency, size/timeout bounds, and manual verification.
 
 ## Input rules
 
-- `originalUrl` is required, may contain at most 2,048 characters, and must be an absolute `http` or `https` URI.
-- `customAlias` may be omitted, `null`, or whitespace-only. A nonblank alias must contain 4–20 ASCII letters, digits, underscores, or hyphens (`^[A-Za-z0-9_-]+$`). Codes are case-sensitive.
+- `originalUrl` is required, may contain at most 2,048 characters before and after canonicalization,
+  and must be an absolute `http` or `https` URI with a valid host and no embedded credentials,
+  controls, or surrounding whitespace. Unicode DNS hosts are stored in lower-case ASCII Punycode.
+- `customAlias` may be omitted, `null`, or whitespace-only. A nonblank alias must contain 4–20
+  ASCII letters, digits, underscores, or hyphens (`^[A-Za-z0-9_-]+$`). Codes are case-sensitive,
+  while platform route reservations are checked case-insensitively.
 - `customDomainId` may be omitted or `null` for the configured platform host. A value must identify
   a verified, enabled claim owned by the current user; otherwise creation returns
   `409 CUSTOM_DOMAIN_UNAVAILABLE`.
 - `expiresAtUtc` may be omitted or `null`. When supplied, it must be a future UTC timestamp serialized with the `Z` designator, for example `2026-12-31T00:00:00Z`. Offset, local, and unspecified timestamps are rejected rather than silently reinterpreted.
 
 The application validates these bounds before persistence. SQL Server independently limits `OriginalUrl` to 2,048 characters and `ShortCode` to 20 characters.
+
+The complete scheme, canonicalization, IDN display, reserved-route, and redirect-metadata policy is
+documented in [URL, Alias, and Redirect-Metadata Security](url-alias-input-security.md).
 
 ## Uniqueness and collision handling
 
