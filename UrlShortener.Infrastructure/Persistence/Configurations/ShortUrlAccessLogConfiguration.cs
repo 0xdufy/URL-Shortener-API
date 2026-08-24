@@ -19,14 +19,11 @@ public class ShortUrlAccessLogConfiguration : IEntityTypeConfiguration<ShortUrlA
             .IsRequired()
             .HasColumnType("datetime2");
 
-        builder.Property(x => x.IpAddress)
-            .HasMaxLength(64);
-
         builder.Property(x => x.UserAgent)
             .HasMaxLength(256);
 
-        builder.Property(x => x.Referer)
-            .HasMaxLength(512);
+        builder.Property(x => x.ReferrerHost)
+            .HasMaxLength(253);
 
         builder.Property(x => x.ReferrerKind)
             .HasMaxLength(16)

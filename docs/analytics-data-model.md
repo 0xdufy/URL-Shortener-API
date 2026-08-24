@@ -32,7 +32,7 @@ For every accepted click event, the analytics worker uses one SQL transaction to
 3. increment the hourly overall row, daily overall row, and four daily dimension rows; and
 4. insert `ShortUrlAccessLogs` with the integration-event ID as its idempotency primary key.
 
-The raw access row contains bounded user agent, normalized referrer host and kind, daily
+The raw access row contains bounded user agent, normalized `ReferrerHost` and kind, daily
 pseudonymous visitor ID, and identity scheme. It contains no raw IP. Dimension classification
 occurs in the worker immediately before transactional aggregation. Raw strings are never used as
 browser, OS, device, or displayed referrer keys. Referrer hosts are lower-cased IDN ASCII host
@@ -137,7 +137,7 @@ visitor increments clicks but not daily uniques.
 
 ## Retention implications
 
-These are the data-lifecycle targets for TASK-049 to enforce with restart-safe jobs:
+These are the database data-lifecycle targets for TASK-049 to enforce with restart-safe jobs:
 
 - raw access logs, including bounded user agent and pseudonymous visitor ID: 30 days;
 - hourly aggregates: 90 days;

@@ -56,6 +56,9 @@ public static class RabbitMqServiceCollectionExtensions
                 options => options.RetryBaseDelayMilliseconds is >= 50 and <= 10_000,
                 "RabbitMq:RetryBaseDelayMilliseconds must be between 50 and 10000.")
             .Validate(
+                options => options.MessageRetentionDays is >= 1 and <= 30,
+                "RabbitMq:MessageRetentionDays must be between 1 and 30.")
+            .Validate(
                 options => IsValidTopologyName(options.ExchangeName) &&
                     IsValidTopologyName(options.QueueName) &&
                     IsValidTopologyName(options.RoutingKey) &&

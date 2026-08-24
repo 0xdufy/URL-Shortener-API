@@ -19,6 +19,7 @@ public sealed class RabbitMqOptions
     public ushort ConsumerPrefetchCount { get; set; } = 32;
     public int DeliveryLimit { get; set; } = 5;
     public int RetryBaseDelayMilliseconds { get; set; } = 250;
+    public int MessageRetentionDays { get; set; } = 7;
     public string ExchangeName { get; set; } = "url-shortener.events.v1";
     public string QueueName { get; set; } = "url-shortener.analytics.clicks.v1";
     public string RoutingKey { get; set; } = "analytics.click.v1";

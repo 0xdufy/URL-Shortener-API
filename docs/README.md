@@ -67,6 +67,9 @@ Use exactly one of:
   placement, and outage behavior.
 - `analytics-data-model.md` defines supported analytics dimensions, UTC rollups, stable unknown
   categories, same-day pseudonymous uniqueness, late-event behavior, and retention targets.
+- `analytics-privacy.md` inventories client-derived analytics metadata, transformation/discard
+  points, queue/storage retention, HMAC key rotation, historical semantics, and the end-to-end
+  privacy trace.
 - `redis.md` describes distributed-cache configuration, connection lifecycle, key namespaces, local setup, and outage behavior.
 - `redirect-cache.md` defines redirect outcomes, payloads, TTL, invalidation, race safety,
   corruption handling, access recording, and Redis outage fallback.

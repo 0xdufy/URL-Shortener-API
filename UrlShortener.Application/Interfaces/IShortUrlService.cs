@@ -7,7 +7,6 @@ public interface IShortUrlService
     Task<ShortUrlListResponse> ListAsync(ShortUrlListQuery query, CancellationToken ct);
     Task<ShortUrlResponse> CreateAsync(
         CreateShortUrlRequest req,
-        string clientIp,
         string? idempotencyKey,
         CancellationToken ct);
     Task<ShortUrlResponse?> GetAsync(string shortCode, CancellationToken ct);

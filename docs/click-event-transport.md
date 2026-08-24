@@ -97,8 +97,9 @@ must contain at least 32 random bytes and is configured through
 `ClickEvents:VisitorIdentityHmacKeyBase64` (environment variable
 `ClickEvents__VisitorIdentityHmacKeyBase64`). Development contains an obvious local-only key;
 deployed environments must inject a distinct secret and preserve it across API replicas. Key
-rotation intentionally starts a new identity population. TASK-046 still owns the full metadata
-inventory, retention rules, and any future contract migration.
+rotation intentionally starts a new identity population. The complete inventory, UTC-boundary key
+rotation procedure, retention rules, and contract-change boundary are documented in
+[`analytics-privacy.md`](analytics-privacy.md).
 
 Generate a deployment key with:
 
@@ -189,7 +190,14 @@ Development host fails validation until secrets are supplied.
 | `ConsumerPrefetchCount` | `32` | Maximum unacknowledged deliveries per consumer channel |
 | `DeliveryLimit` | `5` | Quorum delivery attempts before dead lettering |
 | `RetryBaseDelayMilliseconds` | `250` | Consumer exponential-backoff base |
+| `MessageRetentionDays` | `7` | Per-queue TTL for both live and dead-letter click payloads; valid range 1–30 |
 | Exchange/queue/routing keys | table above | Environment-specific topology names when isolation requires it |
+
+`x-message-ttl` is an immutable queue argument. When adopting or changing
+`MessageRetentionDays` for existing topology, stop producers, let the worker drain the live queue,
+handle any dead-letter evidence according to incident policy, delete both click queues, and let the
+worker/API startup redeclare them before resuming producers. A mismatched existing declaration
+fails startup rather than silently leaving an unbounded queue.
 
 Example production secret injection:
 

@@ -104,11 +104,9 @@ public class ShortUrlService : IShortUrlService
 
     public async Task<ShortUrlResponse> CreateAsync(
         CreateShortUrlRequest req,
-        string clientIp,
         string? idempotencyKey,
         CancellationToken ct)
     {
-        _ = clientIp;
         req.OriginalUrl = NormalizeDestinationUrl(req.OriginalUrl);
         var ownerId = RequireCurrentUserId();
         var nowUtc = _dateTimeProvider.UtcNow;

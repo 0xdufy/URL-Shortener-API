@@ -2,7 +2,6 @@ using FluentValidation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using UrlShortener.Api.Models;
-using UrlShortener.Api.Networking;
 using UrlShortener.Api.RateLimiting;
 using UrlShortener.Api.Security;
 using UrlShortener.Application.Dtos;
@@ -88,13 +87,12 @@ public class ShortUrlsController : ControllerBase
         [FromHeader(Name = "Idempotency-Key")] string? idempotencyKey,
         CancellationToken ct)
     {
-        var ip = GetClientIp();
         var validRequest = EnsureValidModelAndBody(request);
         var validIdempotencyKey = ValidateIdempotencyKey(idempotencyKey);
 
         await _createValidator.ValidateAndThrowAsync(validRequest, ct);
 
-        var response = await _shortUrlService.CreateAsync(validRequest, ip, validIdempotencyKey, ct);
+        var response = await _shortUrlService.CreateAsync(validRequest, validIdempotencyKey, ct);
 
         return Created($"/api/v1/short-urls/{response.ShortCode}", response);
     }
@@ -239,11 +237,6 @@ public class ShortUrlsController : ControllerBase
         }
 
         return Ok(response);
-    }
-
-    private string GetClientIp()
-    {
-        return ClientIpAddress.Normalize(HttpContext.Connection.RemoteIpAddress);
     }
 
     private void EnsureSupportedQrCodeQuery()

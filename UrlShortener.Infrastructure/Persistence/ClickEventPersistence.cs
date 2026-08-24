@@ -117,7 +117,7 @@ public sealed class ClickEventPersistence : IClickEventPersistence
                 ShortUrlId = integrationEvent.Payload.ShortUrlId,
                 AccessedAtUtc = accessedAtUtc,
                 UserAgent = integrationEvent.Payload.UserAgent,
-                Referer = integrationEvent.Payload.ReferrerHost,
+                ReferrerHost = integrationEvent.Payload.ReferrerHost,
                 ReferrerKind = integrationEvent.Payload.ReferrerKind,
                 PseudonymousVisitorId = integrationEvent.Payload.PseudonymousVisitorId,
                 VisitorIdentityPeriodUtc = integrationEvent.Payload.VisitorIdentityPeriodUtc,

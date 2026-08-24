@@ -200,7 +200,10 @@ Only validation, alias conflict, generation failure, and unexpected exceptions a
 
 ### `ShortUrlAccessLogs`
 
-`Id` is the primary key; `ShortUrlId` is a required cascade-delete foreign key; `AccessedAtUtc` is required `datetime2`; optional lengths are IP 64, user agent 256, and referrer 512. `(ShortUrlId, AccessedAtUtc)` is indexed for range/group queries.
+The original baseline allowed optional raw IP (64), user agent (256), and referrer (512) values.
+TASK-046 supersedes that privacy boundary: the raw-IP column is removed, the user agent remains
+bounded to 256, and only a normalized `ReferrerHost` of at most 253 characters is retained. See
+[`analytics-privacy.md`](analytics-privacy.md) for the current schema and lifecycle.
 
 SQL Server is the production mode. The Development-only in-memory mode is non-durable, process-local, and does not enforce EF lengths, relational transactions, or fully equivalent uniqueness behavior.
 

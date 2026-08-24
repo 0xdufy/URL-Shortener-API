@@ -73,6 +73,9 @@ environment variables or a secret provider. Deployments must also inject a rando
 visitor identifiers. See [Click Event Transport](docs/click-event-transport.md) for local startup,
 the versioned privacy-aware event contract, publication failure policy, topology,
 retry/dead-letter behaviour, and worker startup.
+See [Analytics Privacy and Client-Metadata Lifecycle](docs/analytics-privacy.md) for the complete
+client-data inventory, HMAC key-rotation boundary, queue/database retention, and approximate
+unique-visitor semantics.
 
 ### 3) Database setup
 Restore the repository-pinned EF CLI:

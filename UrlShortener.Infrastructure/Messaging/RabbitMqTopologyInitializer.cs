@@ -31,6 +31,9 @@ public sealed class RabbitMqTopologyInitializer
         using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutSource.CancelAfter(_operationTimeout);
         var operationToken = timeoutSource.Token;
+        var messageRetentionMilliseconds = checked((long)TimeSpan
+            .FromDays(_options.MessageRetentionDays)
+            .TotalMilliseconds);
 
         await channel.ExchangeDeclareAsync(
             _options.ExchangeName,
@@ -48,7 +51,8 @@ public sealed class RabbitMqTopologyInitializer
 
         var deadLetterQueueArguments = new Dictionary<string, object?>
         {
-            ["x-queue-type"] = "quorum"
+            ["x-queue-type"] = "quorum",
+            ["x-message-ttl"] = messageRetentionMilliseconds
         };
         await channel.QueueDeclareAsync(
             _options.DeadLetterQueueName,
@@ -66,6 +70,7 @@ public sealed class RabbitMqTopologyInitializer
         var queueArguments = new Dictionary<string, object?>
         {
             ["x-queue-type"] = "quorum",
+            ["x-message-ttl"] = messageRetentionMilliseconds,
             ["x-delivery-limit"] = _options.DeliveryLimit,
             ["x-dead-letter-exchange"] = _options.DeadLetterExchangeName,
             ["x-dead-letter-routing-key"] = _options.DeadLetterRoutingKey,
